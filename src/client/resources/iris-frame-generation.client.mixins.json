@@ -1,0 +1,15 @@
+{
+	"required": true,
+	"package": "com.carilt01.irisframegen.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"ExampleClientMixin",
+		"CoreBoostrapMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}
