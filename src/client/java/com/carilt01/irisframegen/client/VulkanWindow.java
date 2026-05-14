@@ -10,8 +10,8 @@ import static org.lwjgl.vulkan.VK10.VK_STRUCTURE_TYPE_APPLICATION_INFO;
 
 public class VulkanWindow {
 
-    private final int width = 800;
-    private final int height = 600;
+    private final int width = 854;
+    private final int height = 480;
 
 
 

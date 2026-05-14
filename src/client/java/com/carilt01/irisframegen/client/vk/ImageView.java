@@ -2,6 +2,8 @@ package com.carilt01.irisframegen.client.vk;
 
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkImageViewCreateInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.LongBuffer;
 
@@ -60,10 +62,15 @@ public class ImageView {
     private final long vkImage;
     private final long vkImageView;
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ImageView.class);
+
     public ImageView(Device device, long vkImage, ImageViewData imageViewData) {
         this.aspectMask = imageViewData.aspectMask;
         this.mipLevels = imageViewData.mipLevels;
         this.vkImage = vkImage;
+
+        LOGGER.info("creating image view for: 0x{}", vkImage);
+
         try (var stack = MemoryStack.stackPush()) {
             LongBuffer lp = stack.mallocLong(1);
             var viewCreateInfo = VkImageViewCreateInfo.calloc(stack)

@@ -7,5 +7,6 @@ public class VkEarlyInit implements PreLaunchEntrypoint {
     @Override
     public void onPreLaunch() {
         IrisFrameGeneration.LOGGER.info("Prelaunch entry point");
+
     }
 }

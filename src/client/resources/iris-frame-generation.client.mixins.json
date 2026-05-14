@@ -4,7 +4,9 @@
 	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"ExampleClientMixin",
-		"CoreBoostrapMixin"
+		"CoreBoostrapMixin",
+		"TextureCreationMixin",
+		"RenderFinishedMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

@@ -98,6 +98,7 @@ public class Queue {
     public void submit(VkCommandBufferSubmitInfo.Buffer commandBuffers, VkSemaphoreSubmitInfo.Buffer waitSemaphores,
                        VkSemaphoreSubmitInfo.Buffer signalSemaphores, Fence fence) {
         try (var stack = MemoryStack.stackPush()) {
+
             var submitInfo = VkSubmitInfo2.calloc(1, stack)
                     .sType$Default()
                     .pCommandBufferInfos(commandBuffers)

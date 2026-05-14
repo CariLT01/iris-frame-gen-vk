@@ -8,10 +8,15 @@ public class PipelineBuildInfo {
     private final ShaderModule[] shaderModules;
     private final VkPipelineVertexInputStateCreateInfo vi;
 
-    public PipelineBuildInfo(ShaderModule[] shaderModules, VkPipelineVertexInputStateCreateInfo vi, int colorFormat) {
+    private final long sampler;
+    private final ImageView sharedImageView;
+
+    public PipelineBuildInfo(ShaderModule[] shaderModules, VkPipelineVertexInputStateCreateInfo vi, int colorFormat, long sampler, ImageView sharedImageView) {
         this.shaderModules = shaderModules;
         this.colorFormat = colorFormat;
         this.vi = vi;
+        this.sampler = sampler;
+        this.sharedImageView = sharedImageView;
     }
 
     public int getColorFormat() {
@@ -24,5 +29,13 @@ public class PipelineBuildInfo {
 
     public VkPipelineVertexInputStateCreateInfo getVi() {
         return vi;
+    }
+
+    public ImageView getSharedImageView() {
+        return sharedImageView;
+    }
+
+    public long getSampler() {
+        return sampler;
     }
 }

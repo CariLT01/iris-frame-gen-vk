@@ -6,6 +6,10 @@ import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
+/// IntelliJ refuses to be able to find MemoryUtil under org.lwjgl.system.MemoryUtil,
+///  even though it exists during runtime,
+/// so here's a wrapper of it called `NativeMemory` to fix this
+
 /**
  * A facade that mirrors the most frequently used methods of
  * {@link MemoryUtil}. Every method directly delegates to the

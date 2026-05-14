@@ -25,6 +25,7 @@ import static org.lwjgl.vulkan.VK13.VK_API_VERSION_1_3;
 public class Instance {
 
     private static final String VALIDATION_LAYER = "VK_LAYER_KHRONOS_validation";
+
     private static final String PORTABILITY_EXTENSION = "VK_KHR_portability_enumeration";
 
     public static final int MESSAGE_SEVERITY_BITMASK = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |

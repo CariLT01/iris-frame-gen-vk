@@ -19,7 +19,7 @@ public class ScnRenderer {
 
     private final Pipeline pipeline;
 
-    public ScnRenderer(VkCtx vkCtx) {
+    public ScnRenderer(VkCtx vkCtx, long sampler, ImageView sharedImageView) {
         clrValueColor = VkClearValue.calloc().color(
                 c -> c.float32(0, 0.5f).float32(1, 0.7f).float32(2, 0.9f).float32(3, 1.0f));
         attInfoColor = createColorAttachmentInfo(vkCtx, clrValueColor);
@@ -27,7 +27,7 @@ public class ScnRenderer {
 
 
         ShaderModule[] shaderModules = createShaderModules(vkCtx);
-        pipeline = createPipeline(vkCtx, shaderModules);
+        pipeline = createPipeline(vkCtx, shaderModules, sampler, sharedImageView);
         Arrays.asList(shaderModules).forEach(s -> s.cleanup(vkCtx));
     }
 
@@ -68,7 +68,8 @@ public class ScnRenderer {
         return result;
     }
 
-    public void render(VkCtx vkCtx, CmdBuffer cmdBuffer, int imageIndex, ModelsCache modelsCache) {
+    public void render(VkCtx vkCtx, CmdBuffer cmdBuffer, int imageIndex, ModelsCache modelsCache,
+                       long descriptorSets) {
         try (var stack = MemoryStack.stackPush()) {
             SwapChain swapChain = vkCtx.getSwapChain();
 
@@ -83,6 +84,11 @@ public class ScnRenderer {
 
             vkCmdBeginRendering(cmdHandle, renderInfo[imageIndex]);
             vkCmdBindPipeline(cmdHandle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getVkPipeline());
+            LongBuffer descriptorSetsBuf = stack.longs(descriptorSets);
+
+
+            vkCmdBindDescriptorSets(cmdBuffer.getVkCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getVkPipelineLayout(),
+                    0, descriptorSetsBuf, null);
 
             VkExtent2D swapChainExtent = swapChain.getSwapChainExtent();
             int width = swapChainExtent.width();
@@ -141,12 +147,17 @@ public class ScnRenderer {
         };
     }
 
-    private static Pipeline createPipeline(VkCtx vkCtx, ShaderModule[] shaderModules) {
+    private static Pipeline createPipeline(VkCtx vkCtx, ShaderModule[] shaderModules,
+                                           long sampler, ImageView sharedImageView) {
         var vtxBuffStruct = new VtxBufferStruct();
         var buildInfo = new PipelineBuildInfo(shaderModules, vtxBuffStruct.getVi(),
-                vkCtx.getSurface().getSurfaceFormat().imageFormat());
+                vkCtx.getSurface().getSurfaceFormat().imageFormat(), sampler, sharedImageView);
         var pipeline = new Pipeline(vkCtx, buildInfo);
         vtxBuffStruct.cleanup();
+        return pipeline;
+    }
+
+    public Pipeline getPipeline() {
         return pipeline;
     }
 }

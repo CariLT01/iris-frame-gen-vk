@@ -66,6 +66,7 @@ public class VkUtils {
                 case VK_ERROR_UNKNOWN -> "VK_ERROR_UNKNOWN";
                 default -> "Not mapped";
             };
+            LOGGER.error("VK CHECK FAILED: {}: {}: [{}]", errMsg, errCode, err);
             throw new RuntimeException(errMsg + ": " + errCode + " [" + err + "]");
         }
     }

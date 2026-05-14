@@ -12,6 +12,10 @@ repositories {
 	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
 	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
 	// for more information about repositories.
+	maven {
+		name = "Modrinth"
+		url = "https://api.modrinth.com/maven"
+	}
 }
 
 loom {
@@ -45,6 +49,11 @@ dependencies {
 	implementation "org.lwjgl:lwjgl-glfw"
 	implementation "org.lwjgl:lwjgl-vulkan"
 	implementation "org.lwjgl:lwjgl-shaderc"
+
+
+	implementation "maven.modrinth:sodium:mc26.1.1-0.8.9-fabric"
+	runtimeOnly "maven.modrinth:sodium:mc26.1.1-0.8.9-fabric"
+	//runtimeOnly "maven.modrinth:gfx-debuggers:3.2.0"
 
 	runtimeOnly "org.lwjgl:lwjgl::natives-windows"
 	runtimeOnly "org.lwjgl:lwjgl-glfw::natives-windows"

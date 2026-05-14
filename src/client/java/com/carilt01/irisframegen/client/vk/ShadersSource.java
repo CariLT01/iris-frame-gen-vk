@@ -14,10 +14,15 @@ void main() {
     public static final String FRAGMENT_SHADER = """
 #version 450
 
+layout(binding = 0) uniform sampler2D screenTexture;
 layout(location = 0) out vec4 FragColor;
 
 void main() {
-    FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+
+    ivec2 texSize = textureSize(screenTexture, 0);
+    vec2 uv = gl_FragCoord.xy / texSize;
+
+    FragColor = texture(screenTexture, uv);
 }
             """;
 }

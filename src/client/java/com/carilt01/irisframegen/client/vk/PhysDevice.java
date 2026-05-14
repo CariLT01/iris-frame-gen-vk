@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static com.carilt01.irisframegen.client.vk.VkUtils.vkCheck;
+import static org.lwjgl.vulkan.KHRExternalSemaphoreWin32.VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
 import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceQueueFamilyProperties2;
@@ -24,6 +25,8 @@ public class PhysDevice {
     private final VkPhysicalDeviceProperties2 vkPhysicalDeviceProperties;
     private final VkQueueFamilyProperties.Buffer vkQueueFamilyProps;
 
+    private static final String MEMORY_EXPORT = "VK_KHR_external_memory_win32";
+
     private static final Logger LOGGER = LoggerFactory.getLogger(PhysDevice.class);
 
     protected static final Set<String> REQUIRED_EXTENSIONS;
@@ -31,6 +34,8 @@ public class PhysDevice {
     static {
         REQUIRED_EXTENSIONS = new HashSet<>();
         REQUIRED_EXTENSIONS.add(KHRSwapchain.VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        REQUIRED_EXTENSIONS.add(MEMORY_EXPORT);
+        REQUIRED_EXTENSIONS.add(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME);
     }
 
     private PhysDevice(VkPhysicalDevice vkPhysicalDevice) {

@@ -18,6 +18,8 @@ public class Pipeline {
 
     private final long vkPipeline;
     private final long vkPipelineLayout;
+    private long descriptorSets;
+    private long descriptorSetLayout;
 
     public Pipeline(VkCtx vkCtx, PipelineBuildInfo buildInfo) {
         LOGGER.debug("Creating pipeline");
@@ -81,7 +83,13 @@ public class Pipeline {
                     .colorAttachmentCount(1)
                     .pColorAttachmentFormats(colorFormats);
 
+            initDescriptorSets(vkCtx, buildInfo.getSampler(), buildInfo.getSharedImageView());
+
+            LOGGER.info("Layout pointer, 0x{}", descriptorSetLayout);
+
             var pPipelineLayoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(stack)
+                    .pSetLayouts(stack.longs(descriptorSetLayout))
+                    .setLayoutCount(1)
                     .sType$Default();
 
             vkCheck(vkCreatePipelineLayout(device.getVkDevice(), pPipelineLayoutCreateInfo, null, lp),
@@ -108,6 +116,86 @@ public class Pipeline {
         }
     }
 
+    private void initDescriptorSets(VkCtx vkCtx, long sampler, ImageView sharedImageView) {
+        try (var stack = MemoryStack.stackPush()) {
+            var binding = VkDescriptorSetLayoutBinding.calloc(stack)
+                    .binding(0)
+                    .descriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    .descriptorCount(1)
+                    .stageFlags(VK_SHADER_STAGE_FRAGMENT_BIT);
+
+            VkDescriptorSetLayoutBinding.Buffer bindings = VkDescriptorSetLayoutBinding.calloc(1, stack);
+            bindings.put(0, binding);
+
+            var createInfo = VkDescriptorSetLayoutCreateInfo.calloc(stack)
+                    .sType$Default()
+                    .pBindings(bindings);
+
+            LongBuffer lp = stack.mallocLong(1);
+            vkCheck(vkCreateDescriptorSetLayout(vkCtx.getDevice().getVkDevice(), createInfo, null, lp),
+                    "Failed to create description set layout");
+
+            long descriptionSetLayout = lp.get(0);
+
+            descriptorSetLayout = descriptionSetLayout;
+            LOGGER.info("Descriptor set layout at: 0x{}", descriptorSetLayout);
+
+            LOGGER.info("Description layout pointer: 0x{}", descriptionSetLayout);
+
+            // pool
+            var poolSize = VkDescriptorPoolSize.calloc(stack)
+                    .type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    .descriptorCount(1);
+
+            VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(1, stack);
+            poolSizes.put(0, poolSize);
+
+            var poolInfo = VkDescriptorPoolCreateInfo.calloc(stack)
+                    .sType$Default()
+                    .maxSets(1)
+                    .pPoolSizes(poolSizes);
+
+            vkCheck(vkCreateDescriptorPool(vkCtx.getDevice().getVkDevice(), poolInfo, null, lp),
+                    "Failed to create descriptor pool");
+
+            long descriptorPool = lp.get(0);
+
+            // allocate set
+            var allocInfo = VkDescriptorSetAllocateInfo.calloc(stack)
+                    .sType$Default()
+                    .descriptorPool(descriptorPool)
+                    .pSetLayouts(stack.longs(descriptionSetLayout));
+
+            vkCheck(vkAllocateDescriptorSets(vkCtx.getDevice().getVkDevice(), allocInfo, lp),
+                    "Failed to allocate descriptor sets");
+
+            descriptorSets = lp.get(0);
+            LOGGER.info("Description sets at: 0x{}", descriptorSets);
+
+            VkDescriptorImageInfo.Buffer imageInfos = VkDescriptorImageInfo.calloc(1, stack);
+            imageInfos.get(0)
+                    .sampler(sampler)
+                    .imageView(sharedImageView.getVkImageView())
+                    .imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+            VkWriteDescriptorSet write = VkWriteDescriptorSet.calloc(stack)
+                    .sType$Default()
+                    .dstSet(descriptorSets)
+                    .dstBinding(0)
+                    .descriptorCount(1)
+                    .descriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    .pImageInfo(imageInfos);
+
+            VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(1, stack);
+            writes.put(0, write);
+
+            vkUpdateDescriptorSets(vkCtx.getDevice().getVkDevice(), writes, null);
+
+            LOGGER.info("Descriptor sets created");
+        }
+
+    }
+
     public void cleanup(VkCtx vkCtx) {
         LOGGER.debug("Destroying pipeline");
         VkDevice vkDevice = vkCtx.getDevice().getVkDevice();
@@ -121,5 +209,9 @@ public class Pipeline {
 
     public long getVkPipelineLayout() {
         return vkPipelineLayout;
+    }
+
+    public long getDescriptorSets() {
+        return descriptorSets;
     }
 }
