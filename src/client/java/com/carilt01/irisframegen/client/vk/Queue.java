@@ -108,6 +108,8 @@ public class Queue {
             }
             long fenceHandle = fence != null ? fence.getVkFence() : VK_NULL_HANDLE;
 
+            // LOGGER.info("Fence handle: 0x{}", fenceHandle);
+
             vkCheck(vkQueueSubmit2(vkQueue, submitInfo, fenceHandle), "Failed to submit command to queue");
 
         }

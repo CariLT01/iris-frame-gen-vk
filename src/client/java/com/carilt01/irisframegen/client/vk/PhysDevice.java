@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static com.carilt01.irisframegen.client.vk.VkUtils.vkCheck;
+import static org.lwjgl.vulkan.EXTValidationFeatures.VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
 import static org.lwjgl.vulkan.KHRExternalSemaphoreWin32.VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
@@ -36,6 +37,7 @@ public class PhysDevice {
         REQUIRED_EXTENSIONS.add(KHRSwapchain.VK_KHR_SWAPCHAIN_EXTENSION_NAME);
         REQUIRED_EXTENSIONS.add(MEMORY_EXPORT);
         REQUIRED_EXTENSIONS.add(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME);
+        REQUIRED_EXTENSIONS.add("VK_KHR_external_semaphore");
     }
 
     private PhysDevice(VkPhysicalDevice vkPhysicalDevice) {

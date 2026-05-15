@@ -3,6 +3,7 @@ package com.carilt01.irisframegen.client.mixin;
 import com.carilt01.irisframegen.client.GlDeviceInterface;
 import com.carilt01.irisframegen.client.GlState;
 import com.carilt01.irisframegen.client.VkState;
+import com.carilt01.irisframegen.client.vk.ImageBufferType;
 import com.mojang.blaze3d.opengl.GlBackend;
 import com.mojang.blaze3d.opengl.GlConst;
 import com.mojang.blaze3d.opengl.GlStateManager;
@@ -112,6 +113,49 @@ public abstract class TextureCreationMixin implements GlDeviceInterface {
 
     }
 
+    @Unique
+    private void createTexture(int width, int height, TextureFormat format, int mipLevels,
+                               int usage, String label, int depthOrLayers, ImageBufferType type, CallbackInfoReturnable<GpuTexture> cir) {
+
+
+
+        VkState.checkCompatible();
+
+        LOGGER.info("Detected main framebuffer, creating vk texture: label: {}", label);
+        LOGGER.info("Format ordinal: {}, format hashcode: {}, format: {}", format.ordinal(), format.hashCode(), format);
+        int vkFormat = textureFormatToVkConstant(format);
+        LOGGER.info("Vk format: {}", vkFormat);
+        long[] outputSize = new long[1];
+        long importHandle = VkState.getEngine().getRender().getImportHandleForImage(width, height, mipLevels, vkFormat, outputSize, type);
+
+        LOGGER.info("Image import handle is: {}, output size: {}", importHandle, outputSize[0]);
+
+        int generatedTexture = importTextureFromHandle(importHandle, outputSize[0],
+                mipLevels, width, height, format);
+
+        try {
+            Constructor<GlTexture> ctor = GlTexture.class.getDeclaredConstructor(
+                    int.class, String.class, TextureFormat.class,
+                    int.class, int.class, int.class, int.class, int.class
+            );
+            ctor.setAccessible(true);
+            GlTexture customTexture = ctor.newInstance(
+                    usage, label, format, width, height, depthOrLayers,
+                    1,
+                    generatedTexture
+            );
+
+            GlState.importSemaphore(VkState.getEngine().getRender().getGlRenderCompleteSemphAdd());
+
+            GlState.createSyncObject();
+
+            cir.setReturnValue(customTexture);
+        } catch (Exception e) {
+            glDeleteTextures(generatedTexture);
+            throw new RuntimeException("Failed to initialize custom GLTexture: " + e);
+        }
+    }
+
     @Inject(method = "createTexture", at = @At(value = "HEAD", target = "Lcom/mojang/blaze3d/opengl/GlStateManager;_texImage2D(...)V"), cancellable = true)
     private void iris_frame_gen$onTextureCreate(
             Supplier<String> labelSupplier, // Bytecode wants Supplier
@@ -127,44 +171,17 @@ public abstract class TextureCreationMixin implements GlDeviceInterface {
 
         // ONLY hijack the specific texture we need for Frame Gen
         if ("Main / Color".equals(label)) {
+            createTexture(width, height, format, mipLevels, usage, label, depthOrLayers, ImageBufferType.COLOR, cir);
+            GlState.colorBufferInitialized = true;
+        } else if ("Main / Depth".equals(label)) {
+            createTexture(width, height, format, mipLevels, usage, label, depthOrLayers, ImageBufferType.DEPTH, cir);
+            GlState.depthBufferInitialized = true;
+        } else {
+            LOGGER.info("other: {}", label);
+        }
 
-            VkState.checkCompatible();
-
-            LOGGER.info("Detected main framebuffer, creating vk texture");
-            LOGGER.info("Format ordinal: {}, format hashcode: {}, format: {}", format.ordinal(), format.hashCode(), format);
-            int vkFormat = textureFormatToVkConstant(format);
-            LOGGER.info("Vk format: {}", vkFormat);
-            long[] outputSize = new long[1];
-            long importHandle = VkState.getEngine().getRender().getImportHandleForImage(width, height, mipLevels, vkFormat, outputSize);
-
-            LOGGER.info("Image import handle is: {}, output size: {}", importHandle, outputSize[0]);
-
-            int generatedTexture = importTextureFromHandle(importHandle, outputSize[0],
-                    mipLevels, width, height, format);
-
-            try {
-                Constructor<GlTexture> ctor = GlTexture.class.getDeclaredConstructor(
-                        int.class, String.class, TextureFormat.class,
-                        int.class, int.class, int.class, int.class, int.class
-                );
-                ctor.setAccessible(true);
-                GlTexture customTexture = ctor.newInstance(
-                        usage, label, format, width, height, depthOrLayers,
-                        1,
-                        generatedTexture
-                );
-
-                VkState.signalReady();
-
-                GlState.importSemaphore(VkState.getEngine().getRender().getGlRenderCompleteSemphAdd());
-
-                cir.setReturnValue(customTexture);
-            } catch (Exception e) {
-                glDeleteTextures(generatedTexture);
-                throw new RuntimeException("Failed to initialize custom GLTexture: " + e);
-            }
-
-
+        if (GlState.colorBufferInitialized && GlState.depthBufferInitialized) {
+            VkState.signalReady();
         }
     }
 

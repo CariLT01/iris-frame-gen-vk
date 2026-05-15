@@ -1,6 +1,7 @@
 package com.carilt01.irisframegen.client.mixin;
 
 import com.carilt01.irisframegen.client.GlState;
+import com.carilt01.irisframegen.client.VkState;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.GameRenderer;
 import org.lwjgl.opengl.EXTSemaphore;
@@ -13,6 +14,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import static org.lwjgl.opengl.EXTSemaphore.glSignalSemaphoreEXT;
+import static org.lwjgl.opengl.GL11C.glFinish;
 
 @Mixin(GameRenderer.class)
 public class RenderFinishedMixin {
@@ -20,9 +22,10 @@ public class RenderFinishedMixin {
     @Unique
     private static final Logger LOGGER = LoggerFactory.getLogger(RenderFinishedMixin.class);
 
-    @Inject(method="renderLevel", at=@At("TAIL"))
-    private void renderLevelFinished(final DeltaTracker deltaTracker, CallbackInfo ci) {
-        LOGGER.info("signaling!!!!!!");
-        EXTSemaphore.glSignalSemaphoreEXT(GlState.glSemph, new int[0], new int[0], new int[0]);
+    @Inject(method="render", at=@At("TAIL"))
+    private void renderLevelFinished(final DeltaTracker deltaTracker, final boolean advanceGameTime, CallbackInfo ci) {
+        // TODO: replace glFinish with something more efficient
+        glFinish(); // expensive, but necessary at the moment to prevent flickering
+        VkState.resumeEngineThread();
     }
 }

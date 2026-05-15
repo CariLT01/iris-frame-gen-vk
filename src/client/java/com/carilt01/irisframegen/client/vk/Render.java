@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.LongBuffer;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.locks.LockSupport;
 
 import static com.carilt01.irisframegen.client.vk.VkUtils.memoryTypeFromProperties;
 import static com.carilt01.irisframegen.client.vk.VkUtils.vkCheck;
@@ -23,8 +24,7 @@ import static org.lwjgl.vulkan.VK10.VK_SAMPLE_COUNT_1_BIT;
 import static org.lwjgl.vulkan.VK10.VK_SHARING_MODE_EXCLUSIVE;
 import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
 import static org.lwjgl.vulkan.VK11.VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-import static org.lwjgl.vulkan.VK13.VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-import static org.lwjgl.vulkan.VK13.VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+import static org.lwjgl.vulkan.VK13.*;
 
 public class Render {
     private final VkCtx vkCtx;
@@ -40,13 +40,17 @@ public class Render {
     private ScnRenderer scnRenderer;
     private int currentFrame;
 
-    private ImageView sharedImageView = null;
+
 
     private final ModelsCache modelsCache;
-    private final long sampler;
+
+    private SharedBufferData colorBuffer;
+    private SharedBufferData depthBuffer;
 
     private final Semaphore glRenderComplete;
     private final long glRenderCompleteSemphAdd;
+
+    private final Object resourceLock = new Object();
 
     public Render(VulkanWindow vkWindow) {
         currentFrame = 0;
@@ -70,18 +74,26 @@ public class Render {
         for (int i = 0; i < numSwapChainImages; i++) {
             renderCompleteSemphs[i] = new Semaphore(vkCtx, false);
         }
-        sampler = createImageSampler();
+
 
         modelsCache = new ModelsCache();
 
         glRenderComplete = new Semaphore(vkCtx, true);
         glRenderCompleteSemphAdd = glRenderComplete.getExportHandle(vkCtx);
+
+        this.createImageSamplers();
+
         LOGGER.info("Completed early graphics pipeline initialization. GL Render Complete Semph at: 0x{}", glRenderCompleteSemphAdd);
+    }
+
+    private void createImageSamplers() {
+        this.colorBuffer = new SharedBufferData(null, createImageSampler());
+        this.depthBuffer = new SharedBufferData(null, createImageSampler());
     }
 
     public void completeLateInit() {
         LOGGER.info("Completing late graphics pipeline initialization");
-        scnRenderer = new ScnRenderer(vkCtx, sampler, sharedImageView);
+        scnRenderer = new ScnRenderer(vkCtx, colorBuffer, depthBuffer);
     }
 
     private long createImageSampler() {
@@ -140,8 +152,17 @@ public class Render {
         cmdBuffer.endRecording();
     }
 
-    private void transitionImageLayout(VkCommandBuffer cmdBuf, long image, int oldLayout, int newLayout) {
+    private void transitionImageLayout(VkCommandBuffer cmdBuf, long image, int oldLayout, int newLayout, ImageBufferType type) {
+        LOGGER.info("Image is: 0x{}", image);
+
+        int aspectMask = 0;
+        switch (type) {
+            case DEPTH -> aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            case COLOR -> aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+
         try (MemoryStack stack = MemoryStack.stackPush()) {
+            int finalAspectMask = aspectMask;
             VkImageMemoryBarrier barrier = VkImageMemoryBarrier.calloc(stack)
                     .sType(VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
                     .oldLayout(oldLayout)
@@ -150,7 +171,7 @@ public class Render {
                     .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
                     .image(image)
                     .subresourceRange(it -> it
-                            .aspectMask(VK_IMAGE_ASPECT_COLOR_BIT)
+                            .aspectMask(finalAspectMask)
                             .baseMipLevel(0)
                             .levelCount(1)      // only one mip level
                             .baseArrayLayer(0)
@@ -206,7 +227,16 @@ public class Render {
         }
     }
 
+    public int getOldLayout(boolean initialized) {
+        return initialized ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+    }
+
     public void render() {
+
+        // wait GL to finish rendering
+        LockSupport.park();
+        // once finished, continue
+
         SwapChain swapChain = vkCtx.getSwapChain();
 
         waitForFence(currentFrame);
@@ -221,14 +251,29 @@ public class Render {
             return;
         }
 
-        transitionImageLayout(cmdBuffer.getVkCommandBuffer(), sharedImageView.getVkImage(),
-                VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        synchronized (resourceLock) {
+
+            // colorbuffer
+            int oldLayout = getOldLayout(colorBuffer.isInitialized());
+            transitionImageLayout(cmdBuffer.getVkCommandBuffer(), colorBuffer.imageView().getVkImage(),
+                    oldLayout,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    ImageBufferType.COLOR);
+            colorBuffer.setInitialized(true);;
+
+            // depthbuffer
+            oldLayout = getOldLayout(depthBuffer.isInitialized());
+            transitionImageLayout(cmdBuffer.getVkCommandBuffer(), depthBuffer.imageView().getVkImage(),
+                    oldLayout,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    ImageBufferType.DEPTH);
+            depthBuffer.setInitialized(true);
 
 
-        long descriptorSets = scnRenderer.getPipeline().getDescriptorSets();
-        //LOGGER.info("Descriptor set add 0x{}", descriptorSets);
-        scnRenderer.render(vkCtx, cmdBuffer, imageIndex, modelsCache, descriptorSets);
+            long descriptorSets = scnRenderer.getPipeline().getDescriptorSets();
+            //LOGGER.info("Descriptor set add 0x{}", descriptorSets);
+            scnRenderer.render(vkCtx, cmdBuffer, imageIndex, modelsCache, descriptorSets);
+        }
 
         recordingStop(cmdBuffer);
 
@@ -252,20 +297,19 @@ public class Render {
             var cmds = VkCommandBufferSubmitInfo.calloc(1, stack)
                     .sType$Default()
                     .commandBuffer(cmdBuffer.getVkCommandBuffer());
-            VkSemaphoreSubmitInfo.Buffer waitSemphs = VkSemaphoreSubmitInfo.calloc(2, stack);
+            VkSemaphoreSubmitInfo.Buffer waitSemphs = VkSemaphoreSubmitInfo.calloc(1, stack);
             waitSemphs.get(0).sType$Default()
                     .stageMask(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT)
                     .semaphore(presCompleteSemphs[currentFrame].getVkSemaphore());
-            waitSemphs.get(1).sType$Default()
-                    .stageMask(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT)
-                    .semaphore(glRenderComplete.getVkSemaphore())
-                    .value(0);
+            /* waitSemphs.get(1).sType$Default()
+                    .stageMask(VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT)
+                    .semaphore(glRenderComplete.getVkSemaphore()); */
             VkSemaphoreSubmitInfo.Buffer signalSemphs = VkSemaphoreSubmitInfo.calloc(1, stack)
                     .sType$Default()
                     .stageMask(VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT)
                     .semaphore(renderCompleteSemphs[imageIndex].getVkSemaphore());
 
-            LOGGER.info("gl render complete semph at: 0x{}", glRenderComplete.getVkSemaphore());
+            // LOGGER.info("gl render complete semph at: 0x{}", glRenderComplete.getVkSemaphore());
 
             graphQueue.submit(cmds, waitSemphs, signalSemphs, fence);
         }
@@ -297,92 +341,110 @@ public class Render {
         }
     }
 
-    public long getImportHandleForImage(int width, int height, int mipLevels, int format, long[] outSize) {
+    public long getImportHandleForImage(int width, int height, int mipLevels, int format, long[] outSize,
+                                        ImageBufferType type) {
         if (format ==0) {
             throw new IllegalArgumentException("Format cannot be 0");
         }
 
-        try (var stack = MemoryStack.stackPush()) {
+        synchronized (resourceLock) {
+            colorBuffer.setInitialized(false);
+            depthBuffer.setInitialized(false);
+
+            try (var stack = MemoryStack.stackPush()) {
+                var externalInfo = VkExternalMemoryImageCreateInfo.calloc(stack)
+                        .sType$Default()
+                        .handleTypes(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR);
+
+                int attachmentBit = 0;
+                switch (type) {
+                    case DEPTH -> attachmentBit = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+                    case COLOR -> attachmentBit = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                }
+
+                var createInfo = VkImageCreateInfo.calloc(stack)
+                        .sType$Default()
+                        .pNext(externalInfo)
+                        .imageType(VK_IMAGE_TYPE_2D)
+                        .format(format)
+                        .extent(it -> it.set(width, height, 1))
+                        .mipLevels(1)
+                        .arrayLayers(1)
+                        .samples(VK_SAMPLE_COUNT_1_BIT)
+                        .tiling(VK_IMAGE_TILING_OPTIMAL)
+                        .usage(VK_IMAGE_USAGE_SAMPLED_BIT | attachmentBit | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+                        .sharingMode(VK_SHARING_MODE_EXCLUSIVE)
+                        .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+
+                LongBuffer lp1 = stack.mallocLong(1);
+                vkCheck(vkCreateImage(vkCtx.getDevice().getVkDevice(), createInfo, null, lp1),
+                        "Failed to create image");
+
+                long vkImage = lp1.get(0);
+                LOGGER.info("VkImage address should be at: 0x{}", vkImage);
+
+                LongBuffer lp = stack.mallocLong(1);
 
 
+                // memory requirements and export information
+                var memReq = VkMemoryRequirements.malloc(stack);
+                vkGetImageMemoryRequirements(vkCtx.getDevice().getVkDevice(), vkImage, memReq);
 
-            var externalInfo = VkExternalMemoryImageCreateInfo.calloc(stack)
-                    .sType$Default()
-                    .handleTypes(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR);
+                var dedicatedInfo = VkMemoryDedicatedAllocateInfo.calloc(stack)
+                        .sType$Default()
+                        .image(vkImage);
 
-            var createInfo = VkImageCreateInfo.calloc(stack)
-                    .sType$Default()
-                    .pNext(externalInfo)
-                    .imageType(VK_IMAGE_TYPE_2D)
-                    .format(format)
-                    .extent(it -> it.set(width, height, 1))
-                    .mipLevels(1)
-                    .arrayLayers(1)
-                    .samples(VK_SAMPLE_COUNT_1_BIT)
-                    .tiling(VK_IMAGE_TILING_OPTIMAL)
-                    .usage(VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
-                    .sharingMode(VK_SHARING_MODE_EXCLUSIVE)
-                    .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+                var exportInfo = VkExportMemoryAllocateInfo.calloc(stack)
+                        .sType$Default()
+                        .handleTypes(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR);
+                dedicatedInfo.pNext(exportInfo.address());
 
-            LongBuffer lp1 = stack.mallocLong(1);
-            vkCheck(vkCreateImage(vkCtx.getDevice().getVkDevice(), createInfo, null, lp1),
-                    "Failed to create image");
+                var allocInfo = VkMemoryAllocateInfo.calloc(stack)
+                        .sType$Default()
+                        .pNext(dedicatedInfo.address())
+                        .allocationSize(memReq.size())
+                        .memoryTypeIndex(memoryTypeFromProperties(vkCtx, memReq.memoryTypeBits(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
 
-            long vkImage = lp1.get(0);
+                vkCheck(vkAllocateMemory(vkCtx.getDevice().getVkDevice(), allocInfo, null, lp),
+                        "Failed to allocate memory for external export handle image");
 
-            LongBuffer lp = stack.mallocLong(1);
+                long vkMemory = lp.get(0);
 
+                vkCheck(vkBindImageMemory(vkCtx.getDevice().getVkDevice(), vkImage, vkMemory, 0),
+                        "Failed to bind image memory");
+
+                LOGGER.info("Created image is address: 0x{}", vkImage);
 
 
+                int aspectMaxBit = 0;
+                switch (type) {
+                    case DEPTH -> aspectMaxBit = VK_IMAGE_ASPECT_DEPTH_BIT;
+                    case COLOR -> aspectMaxBit = VK_IMAGE_ASPECT_COLOR_BIT;
+                }
 
-            // memory requirements and export information
-            var memReq = VkMemoryRequirements.malloc(stack);
-            vkGetImageMemoryRequirements(vkCtx.getDevice().getVkDevice(), vkImage, memReq);
+                ImageView sharedImageView = new ImageView(vkCtx.getDevice(), vkImage, new ImageView.ImageViewData()
+                        .format(format).aspectMask(aspectMaxBit));
 
-            var dedicatedInfo = VkMemoryDedicatedAllocateInfo.calloc(stack)
-                    .sType$Default()
-                    .image(vkImage);
+                if (type == ImageBufferType.COLOR) {
+                    colorBuffer.setImageView(sharedImageView);
+                } else if (type == ImageBufferType.DEPTH) {
+                    depthBuffer.setImageView(sharedImageView);
+                }
 
-            var exportInfo = VkExportMemoryAllocateInfo.calloc(stack)
-                    .sType$Default()
-                    .handleTypes(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR);
-            dedicatedInfo.pNext(exportInfo.address());
+                var handleInfo = VkMemoryGetWin32HandleInfoKHR.calloc(stack)
+                        .sType$Default()
+                        .memory(vkMemory)
+                        .handleType(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR);
 
-            var allocInfo = VkMemoryAllocateInfo.calloc(stack)
-                    .sType$Default()
-                    .pNext(dedicatedInfo.address())
-                    .allocationSize(memReq.size())
-                    .memoryTypeIndex(memoryTypeFromProperties(vkCtx, memReq.memoryTypeBits(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+                PointerBuffer pHandle = stack.mallocPointer(1);
+                vkCheck(vkGetMemoryWin32HandleKHR(vkCtx.getDevice().getVkDevice(), handleInfo, pHandle),
+                        "Failed to export vk memory handle");
 
-            vkCheck(vkAllocateMemory(vkCtx.getDevice().getVkDevice(), allocInfo, null, lp),
-                    "Failed to allocate memory for external export handle image");
+                outSize[0] = memReq.size();
+                return pHandle.get(0);
 
-            long vkMemory = lp.get(0);
-
-            vkCheck(vkBindImageMemory(vkCtx.getDevice().getVkDevice(), vkImage, vkMemory, 0),
-                    "Failed to bind image memory");
-
-            LOGGER.info("Created image is address: 0x{}", vkImage);
-
-            sharedImageView = new ImageView(vkCtx.getDevice(), vkImage, new ImageView.ImageViewData()
-                    .format(format).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT));
-
-            var handleInfo = VkMemoryGetWin32HandleInfoKHR.calloc(stack)
-                    .sType$Default()
-                    .memory(vkMemory)
-                    .handleType(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR);
-
-            PointerBuffer pHandle = stack.mallocPointer(1);
-            vkCheck(vkGetMemoryWin32HandleKHR(vkCtx.getDevice().getVkDevice(), handleInfo, pHandle),
-                    "Failed to export vk memory handle");
-
-            outSize[0] = memReq.size();
-            return pHandle.get(0);
-
+            }
         }
-
-
-
     }
 
     public long getGlRenderCompleteSemphAdd() {

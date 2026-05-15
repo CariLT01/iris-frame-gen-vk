@@ -1,8 +1,11 @@
 package com.carilt01.irisframegen.client.vk;
 
+import com.carilt01.irisframegen.client.GlState;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.shaderc.Shaderc;
 import org.lwjgl.vulkan.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.LongBuffer;
 import java.util.Arrays;
@@ -13,13 +16,16 @@ import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK13.*;
 
 public class ScnRenderer {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ScnRenderer.class);
+
     private final VkClearValue clrValueColor;
     private VkRenderingAttachmentInfo.Buffer[] attInfoColor;
     private VkRenderingInfo[] renderInfo;
 
     private final Pipeline pipeline;
 
-    public ScnRenderer(VkCtx vkCtx, long sampler, ImageView sharedImageView) {
+    public ScnRenderer(VkCtx vkCtx, SharedBufferData colorBuffer, SharedBufferData depthBuffer) {
         clrValueColor = VkClearValue.calloc().color(
                 c -> c.float32(0, 0.5f).float32(1, 0.7f).float32(2, 0.9f).float32(3, 1.0f));
         attInfoColor = createColorAttachmentInfo(vkCtx, clrValueColor);
@@ -27,7 +33,7 @@ public class ScnRenderer {
 
 
         ShaderModule[] shaderModules = createShaderModules(vkCtx);
-        pipeline = createPipeline(vkCtx, shaderModules, sampler, sharedImageView);
+        pipeline = createPipeline(vkCtx, shaderModules, colorBuffer, depthBuffer);
         Arrays.asList(shaderModules).forEach(s -> s.cleanup(vkCtx));
     }
 
@@ -70,11 +76,15 @@ public class ScnRenderer {
 
     public void render(VkCtx vkCtx, CmdBuffer cmdBuffer, int imageIndex, ModelsCache modelsCache,
                        long descriptorSets) {
+
+
         try (var stack = MemoryStack.stackPush()) {
             SwapChain swapChain = vkCtx.getSwapChain();
 
             long swapChainImage = swapChain.getImageView(imageIndex).getVkImage();
             VkCommandBuffer cmdHandle = cmdBuffer.getVkCommandBuffer();
+
+            LOGGER.info("Swap chain image: 0x{} call before", swapChainImage);
 
             VkUtils.imageBarrier(stack, cmdHandle, swapChainImage,
                     VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -122,6 +132,7 @@ public class ScnRenderer {
             vkCmdEndRendering(cmdHandle);
 
 
+            LOGGER.info("Swap chain image: 0x{}", swapChainImage);
             VkUtils.imageBarrier(stack, cmdHandle, swapChainImage,
                     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                     VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
@@ -148,10 +159,10 @@ public class ScnRenderer {
     }
 
     private static Pipeline createPipeline(VkCtx vkCtx, ShaderModule[] shaderModules,
-                                           long sampler, ImageView sharedImageView) {
+                                           SharedBufferData colorBufferData, SharedBufferData depthBufferData) {
         var vtxBuffStruct = new VtxBufferStruct();
         var buildInfo = new PipelineBuildInfo(shaderModules, vtxBuffStruct.getVi(),
-                vkCtx.getSurface().getSurfaceFormat().imageFormat(), sampler, sharedImageView);
+                vkCtx.getSurface().getSurfaceFormat().imageFormat(), colorBufferData, depthBufferData);
         var pipeline = new Pipeline(vkCtx, buildInfo);
         vtxBuffStruct.cleanup();
         return pipeline;

@@ -65,9 +65,13 @@ public class Semaphore {
                     .handleType(VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR);
 
             PointerBuffer pb = stack.mallocPointer(1);
-            vkGetSemaphoreWin32HandleKHR(vkCtx.getDevice().getVkDevice(), getHandleInfo, pb);
+            vkCheck(vkGetSemaphoreWin32HandleKHR(vkCtx.getDevice().getVkDevice(), getHandleInfo, pb),
+                    "Failed to get semaphore win32 handle");
 
             long handle = pb.get(0);
+            if (handle == 0) {
+                throw new RuntimeException("Exported semaphore handle is NULL");
+            }
             LOGGER.info("Handle: 0x{}", handle);
             return handle;
         }

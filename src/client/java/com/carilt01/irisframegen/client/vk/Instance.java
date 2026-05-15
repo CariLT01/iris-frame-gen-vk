@@ -19,6 +19,7 @@ import static com.carilt01.irisframegen.client.vk.VkUtils.vkCheck;
 import static org.lwjgl.glfw.GLFW.GLFW_NO_ERROR;
 import static org.lwjgl.glfw.GLFW.glfwGetError;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
+import static org.lwjgl.vulkan.EXTValidationFeatures.*;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK13.VK_API_VERSION_1_3;
 
@@ -109,12 +110,27 @@ public class Instance {
             }
             requiredExtensions.flip();
 
+            IntBuffer enabledFeatures = stack.ints(
+                    VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT,             // Shader/Device checks
+                    VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT,
+                    VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,           // Performance warnings
+                    VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT // Race conditions
+            );
+
+            // validation features
+            var validationFeatures = VkValidationFeaturesEXT.calloc(stack)
+                    .sType$Default()
+                    .pEnabledValidationFeatures(enabledFeatures);
+
             // debug ext callback
             long extension = 0L;
             if (supportsValidation) {
-                debugUtils = createDebugCallBack();
+                debugUtils = createDebugCallBack(validationFeatures.address());
                 extension = debugUtils.address();
             };
+
+
+
 
             var instanceInfo = VkInstanceCreateInfo.calloc(stack)
                     .sType$Default()
@@ -139,11 +155,12 @@ public class Instance {
         }
     }
 
-    private static VkDebugUtilsMessengerCreateInfoEXT createDebugCallBack() {
+    private static VkDebugUtilsMessengerCreateInfoEXT createDebugCallBack(long features) {
         return VkDebugUtilsMessengerCreateInfoEXT.calloc()
                 .sType$Default()
                 .messageSeverity(MESSAGE_SEVERITY_BITMASK)
                 .messageType(MESSAGE_TYPE_BITMASK)
+                .pNext(features)
                 .pfnUserCallback((messageSeverity, messageType, pCallbackData, pUserData) -> {
                     VkDebugUtilsMessengerCallbackDataEXT callbackData = VkDebugUtilsMessengerCallbackDataEXT.create(pCallbackData);
                     if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) != 0) {
@@ -155,6 +172,19 @@ public class Instance {
                     } else {
                         LOGGER.debug(DBG_CALL_BACK_PREF, callbackData.pMessageString());
                     }
+                    int objectCount = callbackData.objectCount();
+                    for (int i = 0; i < objectCount; i++) {
+                        VkDebugUtilsObjectNameInfoEXT obj = callbackData.pObjects().get(i);
+                        LOGGER.error("Suspect: Object [{}]: Type {}, Handle 0x{}, Name {}",
+                                i, obj.objectType(), obj.objectHandle(), obj.pObjectNameString());
+                    }
+
+                    int labelCount = callbackData.cmdBufLabelCount();
+                    for (int i = 0; i < labelCount; i++) {
+                        VkDebugUtilsLabelEXT label = callbackData.pCmdBufLabels().get(i);
+                        LOGGER.debug("Command Label Context: {}", label.pLabelNameString());
+                    }
+
                     return VK_FALSE;
                 });
     }

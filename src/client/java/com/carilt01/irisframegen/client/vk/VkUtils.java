@@ -16,7 +16,7 @@ import static org.lwjgl.vulkan.VK13.*;
 public class VkUtils {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(VkUtils.class);
-    public static final int MAX_IN_FLIGHT = 2;
+    public static final int MAX_IN_FLIGHT = 1;
 
     public static final int FLOAT_SIZE = 4;
     public static final int INT_SIZE = 4;
@@ -66,6 +66,7 @@ public class VkUtils {
                 case VK_ERROR_UNKNOWN -> "VK_ERROR_UNKNOWN";
                 default -> "Not mapped";
             };
+
             LOGGER.error("VK CHECK FAILED: {}: {}: [{}]", errMsg, errCode, err);
             throw new RuntimeException(errMsg + ": " + errCode + " [" + err + "]");
         }

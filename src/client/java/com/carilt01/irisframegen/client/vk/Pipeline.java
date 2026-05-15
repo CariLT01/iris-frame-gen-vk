@@ -53,7 +53,7 @@ public class Pipeline {
             var rasterizationStateCreateInfo = VkPipelineRasterizationStateCreateInfo.calloc(stack)
                     .sType$Default()
                     .polygonMode(VK_POLYGON_MODE_FILL)
-                    .cullMode(VK_CULL_MODE_NONE)
+                    .cullMode(VK_CULL_MODE_BACK_BIT)
                     .frontFace(VK_FRONT_FACE_COUNTER_CLOCKWISE)
                     .lineWidth(1.0f);
 
@@ -83,7 +83,7 @@ public class Pipeline {
                     .colorAttachmentCount(1)
                     .pColorAttachmentFormats(colorFormats);
 
-            initDescriptorSets(vkCtx, buildInfo.getSampler(), buildInfo.getSharedImageView());
+            initDescriptorSets(vkCtx, buildInfo.getColorBufferData(), buildInfo.getDepthBufferData());
 
             LOGGER.info("Layout pointer, 0x{}", descriptorSetLayout);
 
@@ -116,7 +116,7 @@ public class Pipeline {
         }
     }
 
-    private void initDescriptorSets(VkCtx vkCtx, long sampler, ImageView sharedImageView) {
+    private void initDescriptorSets(VkCtx vkCtx, SharedBufferData colorBufferData, SharedBufferData depthBufferData) {
         try (var stack = MemoryStack.stackPush()) {
             var binding = VkDescriptorSetLayoutBinding.calloc(stack)
                     .binding(0)
@@ -124,8 +124,16 @@ public class Pipeline {
                     .descriptorCount(1)
                     .stageFlags(VK_SHADER_STAGE_FRAGMENT_BIT);
 
-            VkDescriptorSetLayoutBinding.Buffer bindings = VkDescriptorSetLayoutBinding.calloc(1, stack);
+            var binding2 = VkDescriptorSetLayoutBinding.calloc(stack)
+                    .binding(1)
+                    .descriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    .descriptorCount(1)
+                    .stageFlags(VK_SHADER_STAGE_FRAGMENT_BIT);
+
+
+            VkDescriptorSetLayoutBinding.Buffer bindings = VkDescriptorSetLayoutBinding.calloc(2, stack);
             bindings.put(0, binding);
+            bindings.put(1, binding2);
 
             var createInfo = VkDescriptorSetLayoutCreateInfo.calloc(stack)
                     .sType$Default()
@@ -145,7 +153,7 @@ public class Pipeline {
             // pool
             var poolSize = VkDescriptorPoolSize.calloc(stack)
                     .type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
-                    .descriptorCount(1);
+                    .descriptorCount(2);
 
             VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(1, stack);
             poolSizes.put(0, poolSize);
@@ -172,10 +180,14 @@ public class Pipeline {
             descriptorSets = lp.get(0);
             LOGGER.info("Description sets at: 0x{}", descriptorSets);
 
-            VkDescriptorImageInfo.Buffer imageInfos = VkDescriptorImageInfo.calloc(1, stack);
+            VkDescriptorImageInfo.Buffer imageInfos = VkDescriptorImageInfo.calloc(2, stack);
             imageInfos.get(0)
-                    .sampler(sampler)
-                    .imageView(sharedImageView.getVkImageView())
+                    .sampler(colorBufferData.sampler())
+                    .imageView(colorBufferData.imageView().getVkImageView())
+                    .imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            imageInfos.get(1)
+                    .sampler(depthBufferData.sampler())
+                    .imageView(depthBufferData.imageView().getVkImageView())
                     .imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
             VkWriteDescriptorSet write = VkWriteDescriptorSet.calloc(stack)
@@ -184,10 +196,20 @@ public class Pipeline {
                     .dstBinding(0)
                     .descriptorCount(1)
                     .descriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
-                    .pImageInfo(imageInfos);
+                    .pImageInfo(imageInfos.position(0));
 
-            VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(1, stack);
+            VkWriteDescriptorSet write1 = VkWriteDescriptorSet.calloc(stack)
+                    .sType$Default()
+                    .dstSet(descriptorSets)
+                    .dstBinding(1)
+                    .descriptorCount(1)
+                    .descriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    .pImageInfo(imageInfos.position(1));
+
+
+            VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(2, stack);
             writes.put(0, write);
+            writes.put(1, write1);
 
             vkUpdateDescriptorSets(vkCtx.getDevice().getVkDevice(), writes, null);
 
