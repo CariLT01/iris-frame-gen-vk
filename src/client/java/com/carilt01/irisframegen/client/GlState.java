@@ -14,6 +14,8 @@ public class GlState {
     public static boolean colorBufferInitialized = false;
     public static boolean depthBufferInitialized = false;
 
+    public static Thread GLThread;
+
     public static void importSemaphore(long address) {
         if (glSemph != 0) {
             glDeleteSemaphoresEXT(glSemph);

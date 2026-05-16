@@ -1,5 +1,6 @@
 package com.carilt01.irisframegen.client.vk;
 
+import com.carilt01.irisframegen.client.GlState;
 import com.carilt01.irisframegen.client.VulkanWindow;
 import com.mojang.blaze3d.textures.TextureFormat;
 import org.lwjgl.PointerBuffer;
@@ -13,8 +14,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.locks.LockSupport;
 
-import static com.carilt01.irisframegen.client.vk.VkUtils.memoryTypeFromProperties;
-import static com.carilt01.irisframegen.client.vk.VkUtils.vkCheck;
+import static com.carilt01.irisframegen.client.vk.VkUtils.*;
 import static org.lwjgl.vulkan.KHRExternalMemoryCapabilities.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
 import static org.lwjgl.vulkan.KHRExternalMemoryWin32.vkGetMemoryWin32HandleKHR;
 import static org.lwjgl.vulkan.VK10.*;
@@ -32,6 +32,11 @@ public class Render {
 
     private final CmdBuffer[] cmdBuffers;
     private final CmdPool[] cmdPools;
+
+    private final CmdBuffer[] cmdBuffersCopy;
+    private final CmdPool[] cmdPoolsCopy;
+    private final Fence copyFence;
+
     private final Fence[] fences;
     private final Queue.GraphicsQueue graphQueue;
     private final Semaphore[] presCompleteSemphs;
@@ -52,6 +57,9 @@ public class Render {
 
     private final Object resourceLock = new Object();
 
+    private static final int WIDTH = 854;
+    private static final int HEIGHT = 480;
+
     public Render(VulkanWindow vkWindow) {
         currentFrame = 0;
         vkCtx = new VkCtx(vkWindow);
@@ -61,6 +69,8 @@ public class Render {
 
         cmdPools = new CmdPool[VkUtils.MAX_IN_FLIGHT];
         cmdBuffers = new CmdBuffer[VkUtils.MAX_IN_FLIGHT];
+        cmdBuffersCopy = new CmdBuffer[MAX_IN_FLIGHT];
+        cmdPoolsCopy = new CmdPool[MAX_IN_FLIGHT];
         fences = new Fence[VkUtils.MAX_IN_FLIGHT];
         presCompleteSemphs = new Semaphore[VkUtils.MAX_IN_FLIGHT];
         int numSwapChainImages = vkCtx.getSwapChain().getNumImages();
@@ -68,9 +78,12 @@ public class Render {
         for (int i = 0; i < VkUtils.MAX_IN_FLIGHT; i++) {
             cmdPools[i] = new CmdPool(vkCtx, graphQueue.getQueueFamilyIndex(), false);
             cmdBuffers[i] = new CmdBuffer(vkCtx, cmdPools[i], true, true);
+            cmdPoolsCopy[i] = new CmdPool(vkCtx, graphQueue.getQueueFamilyIndex(), false);
+            cmdBuffersCopy[i] = new CmdBuffer(vkCtx, cmdPoolsCopy[i], true, true);
             presCompleteSemphs[i] = new Semaphore(vkCtx, false);
             fences[i] = new Fence(vkCtx, true);
         }
+        copyFence = new Fence(vkCtx, false);
         for (int i = 0; i < numSwapChainImages; i++) {
             renderCompleteSemphs[i] = new Semaphore(vkCtx, false);
         }
@@ -87,8 +100,8 @@ public class Render {
     }
 
     private void createImageSamplers() {
-        this.colorBuffer = new SharedBufferData(null, createImageSampler());
-        this.depthBuffer = new SharedBufferData(null, createImageSampler());
+        this.colorBuffer = new SharedBufferData(null, null, createImageSampler());
+        this.depthBuffer = new SharedBufferData(null, null, createImageSampler());
     }
 
     public void completeLateInit() {
@@ -152,80 +165,7 @@ public class Render {
         cmdBuffer.endRecording();
     }
 
-    private void transitionImageLayout(VkCommandBuffer cmdBuf, long image, int oldLayout, int newLayout, ImageBufferType type) {
-        LOGGER.info("Image is: 0x{}", image);
 
-        int aspectMask = 0;
-        switch (type) {
-            case DEPTH -> aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-            case COLOR -> aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        }
-
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            int finalAspectMask = aspectMask;
-            VkImageMemoryBarrier barrier = VkImageMemoryBarrier.calloc(stack)
-                    .sType(VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
-                    .oldLayout(oldLayout)
-                    .newLayout(newLayout)
-                    .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
-                    .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
-                    .image(image)
-                    .subresourceRange(it -> it
-                            .aspectMask(finalAspectMask)
-                            .baseMipLevel(0)
-                            .levelCount(1)      // only one mip level
-                            .baseArrayLayer(0)
-                            .layerCount(1)
-                    );
-
-            // Set source and destination access masks based on layout transitions
-            int srcAccessMask = 0;
-            int dstAccessMask = 0;
-
-            switch (oldLayout) {
-                case VK_IMAGE_LAYOUT_UNDEFINED:
-                    srcAccessMask = 0;
-                    break;
-                case VK_IMAGE_LAYOUT_GENERAL:
-                    srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-                    break;
-                // Add other layouts if needed (e.g., VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
-            }
-
-            switch (newLayout) {
-                case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-                    dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                    break;
-                case VK_IMAGE_LAYOUT_GENERAL:
-                    dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-                    break;
-                // Add other layouts as needed
-            }
-
-            barrier.srcAccessMask(srcAccessMask);
-            barrier.dstAccessMask(dstAccessMask);
-
-            // Determine pipeline stages
-            int srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            int dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-
-            if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED) {
-                srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            } else {
-                srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT; // conservative
-            }
-
-            VkImageMemoryBarrier.Buffer memoryBarriers = VkImageMemoryBarrier.calloc(1, stack);
-            memoryBarriers.put(0, barrier);
-
-            vkCmdPipelineBarrier(cmdBuf,
-                    srcStage, dstStage,
-                    0,                 // dependencyFlags
-                    null,              // memory barriers
-                    null,              // buffer memory barriers
-                    memoryBarriers);          // image memory barrier
-        }
-    }
 
     public int getOldLayout(boolean initialized) {
         return initialized ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
@@ -237,43 +177,69 @@ public class Render {
         LockSupport.park();
         // once finished, continue
 
+        var cmdBufferCopy = cmdBuffersCopy[currentFrame];
+        var cmdPoolCopy = cmdPoolsCopy[currentFrame];
+
+        recordingStart(cmdPoolCopy, cmdBufferCopy);
+
+
+
+        synchronized (resourceLock) {
+
+            // depthbuffer copy first, it is cleared after postprocessing
+
+
+            // colorbuffer
+
+            colorBuffer.imageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            depthBuffer.imageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            colorBuffer.setInitialized(true);;
+            depthBuffer.setInitialized(true);
+            colorBuffer.imageView().copy(colorBuffer.getLocalImageView(), cmdBufferCopy, WIDTH, HEIGHT);
+            depthBuffer.imageView().copy(depthBuffer.getLocalImageView(), cmdBufferCopy, WIDTH, HEIGHT);
+            colorBuffer.imageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            depthBuffer.imageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            colorBuffer.getLocalImageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            depthBuffer.getLocalImageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+
+
+        }
+
+        recordingStop(cmdBufferCopy);
+        submitCommands(cmdBufferCopy, copyFence);
+
+        // wait for the fence
+        //.info("Treying to wait for the copy fence");
+        vkCheck(vkWaitForFences(vkCtx.getDevice().getVkDevice(), copyFence.getVkFence(), true, Long.MAX_VALUE),
+        "Failed to wait for fence");
+        //LOGGER.info("GPU work is complete");
+        // resume GL thread
+        LockSupport.unpark(GlState.GLThread);
+        //LOGGER.info("Thread has been unparked");
+
+
+
         SwapChain swapChain = vkCtx.getSwapChain();
 
+        //LOGGER.info("Waiting for swapchain fence");
         waitForFence(currentFrame);
+        //LOGGER.info("Swapchain fence complete");
+
+        int imageIndex = swapChain.acquireNextImage(vkCtx.getDevice(), presCompleteSemphs[currentFrame]);
+        //LOGGER.info("Acquired swapchain image");
+        if (imageIndex < 0) {
+            return;
+        }
 
         var cmdPool = cmdPools[currentFrame];
         var cmdBuffer = cmdBuffers[currentFrame];
 
         recordingStart(cmdPool, cmdBuffer);
 
-        int imageIndex = swapChain.acquireNextImage(vkCtx.getDevice(), presCompleteSemphs[currentFrame]);
-        if (imageIndex < 0) {
-            return;
-        }
-
-        synchronized (resourceLock) {
-
-            // colorbuffer
-            int oldLayout = getOldLayout(colorBuffer.isInitialized());
-            transitionImageLayout(cmdBuffer.getVkCommandBuffer(), colorBuffer.imageView().getVkImage(),
-                    oldLayout,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                    ImageBufferType.COLOR);
-            colorBuffer.setInitialized(true);;
-
-            // depthbuffer
-            oldLayout = getOldLayout(depthBuffer.isInitialized());
-            transitionImageLayout(cmdBuffer.getVkCommandBuffer(), depthBuffer.imageView().getVkImage(),
-                    oldLayout,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                    ImageBufferType.DEPTH);
-            depthBuffer.setInitialized(true);
-
-
-            long descriptorSets = scnRenderer.getPipeline().getDescriptorSets();
-            //LOGGER.info("Descriptor set add 0x{}", descriptorSets);
-            scnRenderer.render(vkCtx, cmdBuffer, imageIndex, modelsCache, descriptorSets);
-        }
+        long descriptorSets = scnRenderer.getPipeline().getDescriptorSets();
+        //LOGGER.info("Descriptor set add 0x{}", descriptorSets);
+        scnRenderer.render(vkCtx, cmdBuffer, imageIndex, modelsCache, descriptorSets);
 
         recordingStop(cmdBuffer);
 
@@ -282,6 +248,8 @@ public class Render {
         swapChain.presentImage(presentQueue, renderCompleteSemphs[imageIndex], imageIndex);
 
         currentFrame = (currentFrame + 1) % VkUtils.MAX_IN_FLIGHT;
+
+        //LOGGER.info("Image present complete");
 
     }
 
@@ -312,6 +280,27 @@ public class Render {
             // LOGGER.info("gl render complete semph at: 0x{}", glRenderComplete.getVkSemaphore());
 
             graphQueue.submit(cmds, waitSemphs, signalSemphs, fence);
+        }
+    }
+
+    private void submitCommands(CmdBuffer cmdBuffer, Fence waitFence) {
+        try (var stack = MemoryStack.stackPush()) {
+            waitFence.reset(vkCtx);
+
+            var submitInfo = VkSubmitInfo.calloc(stack)
+                            .sType$Default();
+
+            PointerBuffer commandBuffers = stack.pointers(cmdBuffer.getVkCommandBuffer());
+
+            submitInfo.waitSemaphoreCount(0)
+                    .pWaitSemaphores(null)
+                    .pWaitDstStageMask(null)
+                    .pCommandBuffers(commandBuffers)
+                    .pSignalSemaphores(null);
+
+            vkCheck(vkQueueSubmit(graphQueue.getVkQueue(), submitInfo, waitFence.getVkFence()),
+                    "Failed to submit to queue");
+
         }
     }
 
@@ -383,6 +372,26 @@ public class Render {
                 long vkImage = lp1.get(0);
                 LOGGER.info("VkImage address should be at: 0x{}", vkImage);
 
+                // create a copy of it
+
+                var createInfoLocal = VkImageCreateInfo.calloc(stack)
+                        .sType$Default()
+                        .imageType(VK_IMAGE_TYPE_2D)
+                        .format(format)
+                        .extent(it -> it.set(width, height, 1))
+                        .mipLevels(1)
+                        .arrayLayers(1)
+                        .samples(VK_SAMPLE_COUNT_1_BIT)
+                        .tiling(VK_IMAGE_TILING_OPTIMAL)
+                        .usage(VK_IMAGE_USAGE_SAMPLED_BIT | attachmentBit | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+                        .sharingMode(VK_SHARING_MODE_EXCLUSIVE)
+                        .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+
+                LongBuffer lp2 = stack.mallocLong(1);
+                vkCheck(vkCreateImage(vkCtx.getDevice().getVkDevice(), createInfoLocal, null, lp2),
+                        "Failed to create local image");
+                long vkImageLocal = lp2.get(0);
+
                 LongBuffer lp = stack.mallocLong(1);
 
 
@@ -413,24 +422,7 @@ public class Render {
                 vkCheck(vkBindImageMemory(vkCtx.getDevice().getVkDevice(), vkImage, vkMemory, 0),
                         "Failed to bind image memory");
 
-                LOGGER.info("Created image is address: 0x{}", vkImage);
-
-
-                int aspectMaxBit = 0;
-                switch (type) {
-                    case DEPTH -> aspectMaxBit = VK_IMAGE_ASPECT_DEPTH_BIT;
-                    case COLOR -> aspectMaxBit = VK_IMAGE_ASPECT_COLOR_BIT;
-                }
-
-                ImageView sharedImageView = new ImageView(vkCtx.getDevice(), vkImage, new ImageView.ImageViewData()
-                        .format(format).aspectMask(aspectMaxBit));
-
-                if (type == ImageBufferType.COLOR) {
-                    colorBuffer.setImageView(sharedImageView);
-                } else if (type == ImageBufferType.DEPTH) {
-                    depthBuffer.setImageView(sharedImageView);
-                }
-
+                // get export pointer
                 var handleInfo = VkMemoryGetWin32HandleInfoKHR.calloc(stack)
                         .sType$Default()
                         .memory(vkMemory)
@@ -441,6 +433,53 @@ public class Render {
                         "Failed to export vk memory handle");
 
                 outSize[0] = memReq.size();
+
+                // allocate for local image
+                memReq = VkMemoryRequirements.malloc(stack);
+                vkGetImageMemoryRequirements(vkCtx.getDevice().getVkDevice(), vkImageLocal, memReq);
+
+                dedicatedInfo = VkMemoryDedicatedAllocateInfo.calloc(stack)
+                        .sType$Default()
+                        .image(vkImageLocal);
+
+                allocInfo = VkMemoryAllocateInfo.calloc(stack)
+                        .sType$Default()
+                        .pNext(dedicatedInfo.address())
+                        .allocationSize(memReq.size())
+                        .memoryTypeIndex(memoryTypeFromProperties(vkCtx, memReq.memoryTypeBits(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+
+                vkCheck(vkAllocateMemory(vkCtx.getDevice().getVkDevice(), allocInfo, null, lp),
+                        "Failed to allocate memory for local handle image");
+
+                vkMemory = lp.get(0);
+
+                vkCheck(vkBindImageMemory(vkCtx.getDevice().getVkDevice(), vkImageLocal, vkMemory, 0),
+                        "Failed to bind image memory");
+
+                LOGGER.info("Created image is address: 0x{}", vkImage);
+
+
+                int aspectMaxBit = 0;
+                switch (type) {
+                    case DEPTH -> aspectMaxBit = VK_IMAGE_ASPECT_DEPTH_BIT;
+                    case COLOR -> aspectMaxBit = VK_IMAGE_ASPECT_COLOR_BIT;
+                }
+
+                ImageView sharedImageView = new ImageView(vkCtx.getDevice(), vkImage, new ImageView.ImageViewData()
+                        .format(format).aspectMask(aspectMaxBit), VK_IMAGE_LAYOUT_UNDEFINED, type);
+
+                ImageView copiedImageView = new ImageView(vkCtx.getDevice(), vkImageLocal, new ImageView.ImageViewData()
+                        .format(format).aspectMask(aspectMaxBit), VK_IMAGE_LAYOUT_UNDEFINED, type);
+
+                if (type == ImageBufferType.COLOR) {
+                    colorBuffer.setImageView(sharedImageView);
+                    colorBuffer.setLocalImageView(copiedImageView);
+                } else if (type == ImageBufferType.DEPTH) {
+                    depthBuffer.setImageView(sharedImageView);
+                    depthBuffer.setLocalImageView(copiedImageView);
+                }
+
+
                 return pHandle.get(0);
 
             }

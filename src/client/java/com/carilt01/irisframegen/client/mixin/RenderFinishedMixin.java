@@ -13,6 +13,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.concurrent.locks.LockSupport;
+
 import static org.lwjgl.opengl.EXTSemaphore.glSignalSemaphoreEXT;
 import static org.lwjgl.opengl.GL11C.glFinish;
 
@@ -22,10 +24,39 @@ public class RenderFinishedMixin {
     @Unique
     private static final Logger LOGGER = LoggerFactory.getLogger(RenderFinishedMixin.class);
 
-    @Inject(method="render", at=@At("TAIL"))
+
+    /* @Inject(
+            method = "render",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/GameRenderer;renderLevel(Lnet/minecraft/client/DeltaTracker;)V",
+                    shift = At.Shift.AFTER
+            )
+    ) */
     private void renderLevelFinished(final DeltaTracker deltaTracker, final boolean advanceGameTime, CallbackInfo ci) {
-        // TODO: replace glFinish with something more efficient
-        glFinish(); // expensive, but necessary at the moment to prevent flickering
-        VkState.resumeEngineThread();
+
     }
+
+    @Inject(
+            method = "renderLevel",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lcom/mojang/blaze3d/systems/CommandEncoder;clearDepthTexture(Lcom/mojang/blaze3d/textures/GpuTexture;D)V",
+                    shift = At.Shift.BEFORE
+            )
+    )
+    private void depthBufferAvailable(CallbackInfo ci) {
+        /// Point before depthbuffer gets cleared
+
+
+        if (VkState.getSignaled()) {
+            // TODO: replace glFinish with something more efficient
+            glFinish(); // expensive, but necessary at the moment to prevent flickering
+            VkState.resumeEngineThread();
+            LockSupport.park(); // wait till vulkan finishes copy
+            // TODO: avoid park and use more efficient synchronization
+        }
+
+    }
+
 }

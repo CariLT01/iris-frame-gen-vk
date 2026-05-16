@@ -1,10 +1,7 @@
 package com.carilt01.irisframegen.client.vk;
 
 import org.lwjgl.system.MemoryStack;
-import org.lwjgl.vulkan.VkCommandBuffer;
-import org.lwjgl.vulkan.VkDependencyInfo;
-import org.lwjgl.vulkan.VkImageMemoryBarrier2;
-import org.lwjgl.vulkan.VkMemoryType;
+import org.lwjgl.vulkan.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -123,5 +120,122 @@ public class VkUtils {
             throw new RuntimeException("Failed to find memory type");
         }
         return result;
+    }
+
+    public static void transitionImageLayout(VkCommandBuffer cmdBuf, long image,
+                                             int oldLayout, int newLayout,
+                                             ImageBufferType type) {
+        int aspectMask = (type == ImageBufferType.DEPTH)
+                ? VK_IMAGE_ASPECT_DEPTH_BIT
+                : VK_IMAGE_ASPECT_COLOR_BIT;
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkImageMemoryBarrier barrier = VkImageMemoryBarrier.calloc(stack)
+                    .sType(VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
+                    .oldLayout(oldLayout)
+                    .newLayout(newLayout)
+                    .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                    .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                    .image(image)
+                    .subresourceRange(it -> it
+                            .aspectMask(aspectMask)
+                            .baseMipLevel(0)
+                            .levelCount(1)
+                            .baseArrayLayer(0)
+                            .layerCount(1)
+                    );
+
+            // ----- Source access mask & stage (based on oldLayout) -----
+            int srcAccessMask = 0;
+            int srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; // default for UNDEFINED
+
+            switch (oldLayout) {
+                case VK_IMAGE_LAYOUT_UNDEFINED:
+                    srcAccessMask = 0;
+                    srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+                    srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+                    srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                    srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+                    srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+                    srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                    srcStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_GENERAL:
+                    srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+                    srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                    break;
+                // Add other layouts you use (e.g., DEPTH_ATTACHMENT_OPTIMAL, PRESENT_SRC_KHR…)
+                default:
+                    // Conservative fallback
+                    srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+                    srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            }
+
+            // ----- Destination access mask & stage (based on newLayout) -----
+            int dstAccessMask = 0;
+            int dstStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+
+            switch (newLayout) {
+                case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+                    dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+                    dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                    dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+                    dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                    dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+                    dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    dstStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_GENERAL:
+                    dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+                    dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                    break;
+                // Add others as needed
+                default:
+                    dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+                    dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            }
+
+            barrier.srcAccessMask(srcAccessMask);
+            barrier.dstAccessMask(dstAccessMask);
+
+            VkImageMemoryBarrier.Buffer buf = VkImageMemoryBarrier.calloc(1, stack);
+            buf.put(0, barrier);
+
+            // Submit the barrier
+            vkCmdPipelineBarrier(cmdBuf,
+                    srcStage, dstStage,
+                    0,                 // dependencyFlags
+                    null,              // memory barriers
+                    null,              // buffer memory barriers
+                    buf
+            );
+        }
+    }
+
+    public static int getAspectMaskFromBufferType(ImageBufferType type) {
+        int aspectMaxBit = 0;
+        switch (type) {
+            case DEPTH -> aspectMaxBit = VK_IMAGE_ASPECT_DEPTH_BIT;
+            case COLOR -> aspectMaxBit = VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+
+        return aspectMaxBit;
     }
 }

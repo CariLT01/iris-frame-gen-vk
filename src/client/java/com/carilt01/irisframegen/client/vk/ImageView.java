@@ -1,12 +1,16 @@
 package com.carilt01.irisframegen.client.vk;
 
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkImageCopy;
+import org.lwjgl.vulkan.VkImageMemoryBarrier2;
 import org.lwjgl.vulkan.VkImageViewCreateInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.LongBuffer;
 
+import static com.carilt01.irisframegen.client.vk.VkUtils.transitionImageLayout;
 import static com.carilt01.irisframegen.client.vk.VkUtils.vkCheck;
 import static org.lwjgl.vulkan.VK10.*;
 
@@ -61,13 +65,18 @@ public class ImageView {
     private int mipLevels;
     private final long vkImage;
     private final long vkImageView;
+    private int layout;
+    public final ImageBufferType imageType;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ImageView.class);
 
-    public ImageView(Device device, long vkImage, ImageViewData imageViewData) {
+    public ImageView(Device device, long vkImage, ImageViewData imageViewData, int layout,
+                     ImageBufferType imageBufferType) {
         this.aspectMask = imageViewData.aspectMask;
         this.mipLevels = imageViewData.mipLevels;
         this.vkImage = vkImage;
+        this.layout = layout;
+        this.imageType = imageBufferType;
 
         LOGGER.info("creating image view for: 0x{}", vkImage);
 
@@ -107,7 +116,48 @@ public class ImageView {
         return vkImageView;
     }
 
+
+
     public long getVkImage() {
+
         return vkImage;
+    }
+
+    public void transitionLayout(CmdBuffer cmdBuffer, int newLayout) {
+        transitionImageLayout(cmdBuffer.getVkCommandBuffer(), this.getVkImage(), this.layout, newLayout, imageType);
+        this.layout = newLayout;
+    }
+
+    public void copy(ImageView destination, CmdBuffer cmdBuf,
+                     int width, int height) {
+        try (var stack = MemoryStack.stackPush()) {
+            this.transitionLayout(cmdBuf, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            destination.transitionLayout(cmdBuf, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+            VkImageCopy.Buffer copyRegion = VkImageCopy.calloc(1, stack);
+            copyRegion.srcSubresource()
+                    .aspectMask(VkUtils.getAspectMaskFromBufferType(this.imageType))
+                    .mipLevel(0)
+                    .baseArrayLayer(0)
+                    .layerCount(1);
+
+            copyRegion.dstSubresource()
+                    .aspectMask(VkUtils.getAspectMaskFromBufferType(this.imageType))
+                    .mipLevel(0)
+                    .baseArrayLayer(0)
+                    .layerCount(1);
+
+            copyRegion.extent()
+                    .width(width)
+                    .height(height)
+                    .depth(1);
+
+
+            vkCmdCopyImage(cmdBuf.getVkCommandBuffer(),
+                    this.getVkImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    destination.getVkImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    copyRegion);
+        }
+
     }
 }

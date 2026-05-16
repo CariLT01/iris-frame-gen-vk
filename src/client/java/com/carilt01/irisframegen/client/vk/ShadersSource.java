@@ -27,9 +27,10 @@ void main() {
     uv.y = 1.0 - uv.y;
 
     vec3 screenColor = pow(texture(screenTexture, uv).rgb, vec3(2.2));
-    float depth = texture(depthTexture, uv).r;
+    float d = texture(depthTexture, uv).r;
+    float vis = 1.0 - d;
 
-    FragColor = vec4(screenColor, 1.0);
+    FragColor = vec4(vec3(screenColor), 1.0);
 }
             """;
 }

@@ -84,7 +84,7 @@ public class ScnRenderer {
             long swapChainImage = swapChain.getImageView(imageIndex).getVkImage();
             VkCommandBuffer cmdHandle = cmdBuffer.getVkCommandBuffer();
 
-            LOGGER.info("Swap chain image: 0x{} call before", swapChainImage);
+            // LOGGER.info("Swap chain image: 0x{} call before", swapChainImage);
 
             VkUtils.imageBarrier(stack, cmdHandle, swapChainImage,
                     VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -132,7 +132,7 @@ public class ScnRenderer {
             vkCmdEndRendering(cmdHandle);
 
 
-            LOGGER.info("Swap chain image: 0x{}", swapChainImage);
+            // LOGGER.info("Swap chain image: 0x{}", swapChainImage);
             VkUtils.imageBarrier(stack, cmdHandle, swapChainImage,
                     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                     VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,

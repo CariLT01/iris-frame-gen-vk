@@ -169,20 +169,32 @@ public abstract class TextureCreationMixin implements GlDeviceInterface {
     ) {
         String label = labelSupplier.get();
 
-        // ONLY hijack the specific texture we need for Frame Gen
-        if ("Main / Color".equals(label)) {
-            createTexture(width, height, format, mipLevels, usage, label, depthOrLayers, ImageBufferType.COLOR, cir);
-            GlState.colorBufferInitialized = true;
-        } else if ("Main / Depth".equals(label)) {
-            createTexture(width, height, format, mipLevels, usage, label, depthOrLayers, ImageBufferType.DEPTH, cir);
-            GlState.depthBufferInitialized = true;
-        } else {
-            LOGGER.info("other: {}", label);
+        if (!label.startsWith("minecraft:") && !label.startsWith("entity:")) {
+            LOGGER.info("Other framebuffer texture: {}", label);
         }
 
-        if (GlState.colorBufferInitialized && GlState.depthBufferInitialized) {
-            VkState.signalReady();
+        if (!VkState.getSignaled()) {
+
+
+            // ONLY hijack the specific texture we need for Frame Gen
+            if ("Main / Color".equals(label)) {
+                createTexture(width, height, format, mipLevels, usage, label, depthOrLayers, ImageBufferType.COLOR, cir);
+                GlState.colorBufferInitialized = true;
+            } else if ("Main / Depth".equals(label)) {
+                createTexture(width, height, format, mipLevels, usage, label, depthOrLayers, ImageBufferType.DEPTH, cir);
+                GlState.depthBufferInitialized = true;
+            } else {
+                // LOGGER.info("other: {}", label);
+            }
+
+            if (GlState.colorBufferInitialized && GlState.depthBufferInitialized) {
+                VkState.signalReady();
+            }
+
+            GlState.GLThread = Thread.currentThread();
         }
+
+
     }
 
     // Update your interface implementation to handle the conversion

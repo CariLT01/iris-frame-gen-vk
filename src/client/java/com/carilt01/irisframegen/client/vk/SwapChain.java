@@ -105,7 +105,7 @@ public class SwapChain {
         var result = new ImageView[numImages];
         var imageViewData = new ImageView.ImageViewData().format(format).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT);
         for (int i = 0; i < numImages; i++) {
-            result[i] = new ImageView(device, swapChainImages.get(i), imageViewData);
+            result[i] = new ImageView(device, swapChainImages.get(i), imageViewData, VK_IMAGE_LAYOUT_UNDEFINED, ImageBufferType.COLOR);
         }
         return result;
     }

@@ -4,6 +4,7 @@ import org.lwjgl.opengl.GL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 
 public class VkState {
@@ -14,7 +15,7 @@ public class VkState {
     private static Thread engineThread = null;
 
     private static final Object lock = new Object();
-    private static boolean signaled = false;
+    private static AtomicBoolean signaled = new AtomicBoolean(false);
 
     public static void checkCompatible() {
         boolean hasMemoryObject = GL.getCapabilities().GL_EXT_memory_object;
@@ -33,7 +34,7 @@ public class VkState {
             engine = new Engine();
             LOGGER.info("Waiting for READY signal...");
             synchronized (lock) {
-                while (!signaled) {
+                while (!signaled.get()) {
                     try {
                         lock.wait();
                     } catch (InterruptedException e) {
@@ -61,12 +62,16 @@ public class VkState {
     public static void signalReady() {
         synchronized (lock) {
             LOGGER.info("Signaling READY state");
-            signaled = true;
+            signaled.set(true);
             lock.notify();
         }
     }
 
     public static void resumeEngineThread() {
         LockSupport.unpark(engineThread);
+    }
+
+    public static boolean getSignaled() {
+        return signaled.get();
     }
 }

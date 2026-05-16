@@ -183,11 +183,11 @@ public class Pipeline {
             VkDescriptorImageInfo.Buffer imageInfos = VkDescriptorImageInfo.calloc(2, stack);
             imageInfos.get(0)
                     .sampler(colorBufferData.sampler())
-                    .imageView(colorBufferData.imageView().getVkImageView())
+                    .imageView(colorBufferData.getLocalImageView().getVkImageView())
                     .imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             imageInfos.get(1)
                     .sampler(depthBufferData.sampler())
-                    .imageView(depthBufferData.imageView().getVkImageView())
+                    .imageView(depthBufferData.getLocalImageView().getVkImageView())
                     .imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
             VkWriteDescriptorSet write = VkWriteDescriptorSet.calloc(stack)
