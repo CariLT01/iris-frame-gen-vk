@@ -6,7 +6,12 @@
 		"ExampleClientMixin",
 		"CoreBoostrapMixin",
 		"TextureCreationMixin",
-		"RenderFinishedMixin"
+		"RenderFinishedMixin",
+		"GlslPreprocessorMixin",
+		"GlslRenderMixin",
+		"RenderTypeMixin",
+		"iris.IrisShaderPackMixin",
+		"iris.IrisJcppProcessorMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
