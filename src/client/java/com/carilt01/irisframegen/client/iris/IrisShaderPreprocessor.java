@@ -48,33 +48,25 @@ public class IrisShaderPreprocessor {
             layout (rg32f) uniform image2D irisFrameGenOUTmotion;
             uniform float viewWidth;
             uniform float viewHeight;
-            uniform sampler2D depthtex0;
             uniform mat4 gbufferProjectionInverse;
+            uniform mat4 gbufferModelViewInverse;
             uniform mat4 gbufferPreviousProjection;
             uniform mat4 gbufferPreviousModelView;
-            uniform mat4 gbufferModelView;
-            uniform float near;
-            uniform float far;
             uniform vec3 cameraPosition;
             uniform vec3 previousCameraPosition;
-            in float irisFrameGenOUTdepth;
             """;
     private static final String FRAGMENT_SHADER_CORE_TERRAIN = """
-
         vec2 uv = gl_FragCoord.xy / vec2(viewWidth, viewHeight);
-        vec4 ndc = vec4(uv * 2.0 - 1.0, irisFrameGenOUTdepth * 2.0 - 1.0, 1.0);
+        float depth = gl_FragCoord.z;
+        vec4 ndc = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
         vec4 view = gbufferProjectionInverse * ndc;
         view /= view.w;
-        vec4 world = inverse(gbufferModelView) * view;
+        vec4 world = gbufferModelViewInverse * view;
         vec3 cameraDelta = cameraPosition - previousCameraPosition;
         world.xyz += cameraDelta;
-        vec4 prevClip =
-        gbufferPreviousProjection *
-        gbufferPreviousModelView *
-        world;
-        vec2 currUV = uv;
+        vec4 prevClip = gbufferPreviousProjection * gbufferPreviousModelView * world;
         vec2 prevUV = prevClip.xy / prevClip.w * 0.5 + 0.5;
-        vec2 motion = currUV - prevUV;
+        vec2 motion = uv - prevUV;
         imageStore(irisFrameGenOUTmotion, ivec2(gl_FragCoord.xy), vec4(motion.xy, 0.0, 0.0));
             """;
 
@@ -84,53 +76,37 @@ public class IrisShaderPreprocessor {
             uniform vec3 chunkOffset;
             uniform mat4 modelViewMatrix;
             uniform mat4 projectionMatrix;
-            uniform mat4 gbufferPreviousModelView;
-            uniform mat4 gbufferPreviousProjection;
-            uniform vec3 cameraPosition;
-            uniform float near;
-            uniform float far;
-            out float irisFrameGenOUTdepth;
             """;
 
     private static final String VERTEX_SHADER_CORE_BASIC = """
             vec4 worldPos = vec4(vaPosition + chunkOffset, 1.0);
-            mat4 currViewProjMatrix = projectionMatrix * modelViewMatrix;
-            float distFromCamera = distance(cameraPosition, worldPos.xyz);
-            vec4 currentPosition = currViewProjMatrix * worldPos;
-            irisFrameGenOUTdepth = currentPosition.z / currentPosition.w * 0.5 + 0.5;
+            gl_Position = projectionMatrix * modelViewMatrix * worldPos;
             """;
 
     private static final String FRAGMENT_SHADER_HEADER_BASIC = """
             layout (rg32f) uniform image2D irisFrameGenOUTmotion;
             uniform float viewWidth;
             uniform float viewHeight;
-            uniform sampler2D depthtex0;
             uniform mat4 gbufferProjectionInverse;
+            uniform mat4 gbufferModelViewInverse;
             uniform mat4 gbufferPreviousProjection;
             uniform mat4 gbufferPreviousModelView;
-            uniform mat4 gbufferModelView;
-            uniform float near;
-            uniform float far;
             uniform vec3 cameraPosition;
             uniform vec3 previousCameraPosition;
-            in float irisFrameGenOUTdepth;
             """;
 
     private static final String FRAGMENT_SHADER_CORE_BASIC = """
             vec2 uv = gl_FragCoord.xy / vec2(viewWidth, viewHeight);
-            vec4 ndc = vec4(uv * 2.0 - 1.0, irisFrameGenOUTdepth * 2.0 - 1.0, 1.0);
+            float depth = gl_FragCoord.z;
+            vec4 ndc = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
             vec4 view = gbufferProjectionInverse * ndc;
             view /= view.w;
-            vec4 world = inverse(gbufferModelView) * view;
+            vec4 world = gbufferModelViewInverse * view;
             vec3 cameraDelta = cameraPosition - previousCameraPosition;
             world.xyz += cameraDelta;
-            vec4 prevClip =
-            gbufferPreviousProjection *
-            gbufferPreviousModelView *
-            world;
-            vec2 currUV = uv;
+            vec4 prevClip = gbufferPreviousProjection * gbufferPreviousModelView * world;
             vec2 prevUV = prevClip.xy / prevClip.w * 0.5 + 0.5;
-            vec2 motion = currUV - prevUV;
+            vec2 motion = uv - prevUV;
             imageStore(irisFrameGenOUTmotion, ivec2(gl_FragCoord.xy), vec4(motion.xy, 0.0, 0.0));
             """;
 

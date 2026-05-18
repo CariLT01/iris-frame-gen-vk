@@ -31,9 +31,11 @@ void main() {
     float d = texture(depthTexture, uv).r;
     float vis = 1.0 - d;
     
-    vec2 motionColor = texture(motionTexture, uv).rg;
+    vec2 motion = texture(motionTexture, uv).rg;
+    // Map motion from [-1, 1] to [0, 1] for visualization and increase multiplier
+    vec2 motionVis = motion;
 
-    FragColor = vec4(motionColor, 0.0, 1.0);
+    FragColor = vec4(motionVis, 0.0, 1.0);
 }
             """;
 }
