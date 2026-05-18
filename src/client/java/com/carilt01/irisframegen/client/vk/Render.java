@@ -51,6 +51,7 @@ public class Render {
 
     private SharedBufferData colorBuffer;
     private SharedBufferData depthBuffer;
+    private SharedBufferData motionBuffer;
 
     private final Semaphore glRenderComplete;
     private final long glRenderCompleteSemphAdd;
@@ -102,11 +103,12 @@ public class Render {
     private void createImageSamplers() {
         this.colorBuffer = new SharedBufferData(null, null, createImageSampler());
         this.depthBuffer = new SharedBufferData(null, null, createImageSampler());
+        this.motionBuffer = new SharedBufferData(null, null, createImageSampler());
     }
 
     public void completeLateInit() {
         LOGGER.info("Completing late graphics pipeline initialization");
-        scnRenderer = new ScnRenderer(vkCtx, colorBuffer, depthBuffer);
+        scnRenderer = new ScnRenderer(vkCtx, colorBuffer, depthBuffer, motionBuffer);
     }
 
     private long createImageSampler() {
@@ -193,14 +195,23 @@ public class Render {
 
             colorBuffer.imageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             depthBuffer.imageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            motionBuffer.imageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
             colorBuffer.setInitialized(true);;
             depthBuffer.setInitialized(true);
+            motionBuffer.setInitialized(true);
+
             colorBuffer.imageView().copy(colorBuffer.getLocalImageView(), cmdBufferCopy, WIDTH, HEIGHT);
             depthBuffer.imageView().copy(depthBuffer.getLocalImageView(), cmdBufferCopy, WIDTH, HEIGHT);
+            motionBuffer.imageView().copy(motionBuffer.getLocalImageView(), cmdBufferCopy, WIDTH, HEIGHT);
+
             colorBuffer.imageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             depthBuffer.imageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            motionBuffer.imageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
             colorBuffer.getLocalImageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             depthBuffer.getLocalImageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            motionBuffer.getLocalImageView().transitionLayout(cmdBufferCopy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 
 
@@ -349,6 +360,7 @@ public class Render {
                 switch (type) {
                     case DEPTH -> attachmentBit = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
                     case COLOR -> attachmentBit = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                    case MOTION -> attachmentBit = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
                 }
 
                 var createInfo = VkImageCreateInfo.calloc(stack)
@@ -463,6 +475,7 @@ public class Render {
                 switch (type) {
                     case DEPTH -> aspectMaxBit = VK_IMAGE_ASPECT_DEPTH_BIT;
                     case COLOR -> aspectMaxBit = VK_IMAGE_ASPECT_COLOR_BIT;
+                    case MOTION -> aspectMaxBit = VK_IMAGE_ASPECT_COLOR_BIT;
                 }
 
                 ImageView sharedImageView = new ImageView(vkCtx.getDevice(), vkImage, new ImageView.ImageViewData()
@@ -477,6 +490,9 @@ public class Render {
                 } else if (type == ImageBufferType.DEPTH) {
                     depthBuffer.setImageView(sharedImageView);
                     depthBuffer.setLocalImageView(copiedImageView);
+                } else if (type == ImageBufferType.MOTION) {
+                    motionBuffer.setImageView(sharedImageView);
+                    motionBuffer.setLocalImageView(copiedImageView);
                 }
 
 

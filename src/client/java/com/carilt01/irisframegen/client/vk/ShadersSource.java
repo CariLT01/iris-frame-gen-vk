@@ -18,6 +18,7 @@ void main() {
 
 layout(binding = 0) uniform sampler2D screenTexture;
 layout(binding = 1) uniform sampler2D depthTexture;
+layout(binding = 2) uniform sampler2D motionTexture;
 layout(location = 0) out vec4 FragColor;
 
 void main() {
@@ -29,8 +30,10 @@ void main() {
     vec3 screenColor = pow(texture(screenTexture, uv).rgb, vec3(2.2));
     float d = texture(depthTexture, uv).r;
     float vis = 1.0 - d;
+    
+    vec2 motionColor = texture(motionTexture, uv).rg;
 
-    FragColor = vec4(vec3(screenColor), 1.0);
+    FragColor = vec4(motionColor, 0.0, 1.0);
 }
             """;
 }

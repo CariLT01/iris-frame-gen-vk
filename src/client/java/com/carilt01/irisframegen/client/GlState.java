@@ -13,6 +13,7 @@ public class GlState {
 
     public static boolean colorBufferInitialized = false;
     public static boolean depthBufferInitialized = false;
+    public static boolean motionBufferInitialized = false;
 
     public static Thread GLThread;
 

@@ -10,14 +10,17 @@ public class PipelineBuildInfo {
 
     private final SharedBufferData colorBufferData;
     private final SharedBufferData depthBufferData;
+    private final SharedBufferData motionBufferData;
 
     public PipelineBuildInfo(ShaderModule[] shaderModules, VkPipelineVertexInputStateCreateInfo vi, int colorFormat,
-                             SharedBufferData colorBufferData, SharedBufferData depthBufferData) {
+                             SharedBufferData colorBufferData, SharedBufferData depthBufferData,
+                             SharedBufferData motionBufferData) {
         this.shaderModules = shaderModules;
         this.colorFormat = colorFormat;
         this.vi = vi;
         this.colorBufferData = colorBufferData;
         this.depthBufferData = depthBufferData;
+        this.motionBufferData = motionBufferData;
     }
 
     public int getColorFormat() {
@@ -38,5 +41,9 @@ public class PipelineBuildInfo {
 
     public SharedBufferData getDepthBufferData() {
         return depthBufferData;
+    }
+
+    public SharedBufferData getMotionBufferData() {
+        return motionBufferData;
     }
 }

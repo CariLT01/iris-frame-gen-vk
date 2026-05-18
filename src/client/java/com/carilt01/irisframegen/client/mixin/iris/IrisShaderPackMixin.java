@@ -21,7 +21,7 @@ public class IrisShaderPackMixin {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(IrisShaderPackMixin.class);
 
-    @Inject(method="readProperties", at=@At("HEAD"))
+    @Inject(method="readProperties", at=@At("HEAD"), cancellable = true)
     private static String readPropertiesInject(Path shaderPath, String name, CallbackInfoReturnable<String> cir) throws IOException {
 
 
@@ -42,7 +42,7 @@ public class IrisShaderPackMixin {
             String initialFile = Files.readString(shaderPath.resolve(name), StandardCharsets.ISO_8859_1);
 
 
-            initialFile = "\n\nimage.irisFrameGenOUTmotion = irisFrameGenOUTmotion RG32F RG32F RG32F true true 1 1 1 1\n\n" + initialFile;
+            initialFile = "\n\niris.features.required = CUSTOM_IMAGES\nimage.irisFrameGenOUTmotion = irisFrameGenOUTmotion RG RG32F FLOAT true true 1 1 1 1\n\n" + initialFile;
 
 
             LOGGER.info("Modified file is: {}", initialFile);
@@ -51,7 +51,7 @@ public class IrisShaderPackMixin {
 
             LOGGER.info("Shader pack directory: {}", absShaderPath.toAbsolutePath());
 
-
+            cir.setReturnValue(initialFile);
 
             return initialFile;
         } catch (IOException e) {

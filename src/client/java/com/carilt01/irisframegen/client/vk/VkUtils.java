@@ -234,6 +234,7 @@ public class VkUtils {
         switch (type) {
             case DEPTH -> aspectMaxBit = VK_IMAGE_ASPECT_DEPTH_BIT;
             case COLOR -> aspectMaxBit = VK_IMAGE_ASPECT_COLOR_BIT;
+            case MOTION -> aspectMaxBit = VK_IMAGE_ASPECT_COLOR_BIT;
         }
 
         return aspectMaxBit;

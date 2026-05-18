@@ -60,6 +60,7 @@ public class VkState {
     }
 
     public static void signalReady() {
+        // TODO: better synchronization for signaling ready
         synchronized (lock) {
             LOGGER.info("Signaling READY state");
             signaled.set(true);

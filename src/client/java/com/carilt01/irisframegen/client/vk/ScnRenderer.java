@@ -25,7 +25,7 @@ public class ScnRenderer {
 
     private final Pipeline pipeline;
 
-    public ScnRenderer(VkCtx vkCtx, SharedBufferData colorBuffer, SharedBufferData depthBuffer) {
+    public ScnRenderer(VkCtx vkCtx, SharedBufferData colorBuffer, SharedBufferData depthBuffer, SharedBufferData motionBuffer) {
         clrValueColor = VkClearValue.calloc().color(
                 c -> c.float32(0, 0.5f).float32(1, 0.7f).float32(2, 0.9f).float32(3, 1.0f));
         attInfoColor = createColorAttachmentInfo(vkCtx, clrValueColor);
@@ -33,7 +33,7 @@ public class ScnRenderer {
 
 
         ShaderModule[] shaderModules = createShaderModules(vkCtx);
-        pipeline = createPipeline(vkCtx, shaderModules, colorBuffer, depthBuffer);
+        pipeline = createPipeline(vkCtx, shaderModules, colorBuffer, depthBuffer, motionBuffer);
         Arrays.asList(shaderModules).forEach(s -> s.cleanup(vkCtx));
     }
 
@@ -159,10 +159,11 @@ public class ScnRenderer {
     }
 
     private static Pipeline createPipeline(VkCtx vkCtx, ShaderModule[] shaderModules,
-                                           SharedBufferData colorBufferData, SharedBufferData depthBufferData) {
+                                           SharedBufferData colorBufferData, SharedBufferData depthBufferData,
+                                           SharedBufferData motionBufferData) {
         var vtxBuffStruct = new VtxBufferStruct();
         var buildInfo = new PipelineBuildInfo(shaderModules, vtxBuffStruct.getVi(),
-                vkCtx.getSurface().getSurfaceFormat().imageFormat(), colorBufferData, depthBufferData);
+                vkCtx.getSurface().getSurfaceFormat().imageFormat(), colorBufferData, depthBufferData, motionBufferData);
         var pipeline = new Pipeline(vkCtx, buildInfo);
         vtxBuffStruct.cleanup();
         return pipeline;
