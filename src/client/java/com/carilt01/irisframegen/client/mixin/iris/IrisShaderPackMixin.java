@@ -39,32 +39,13 @@ public class IrisShaderPackMixin {
             }
 
 
-            try (FileSystem fs = FileSystems.newFileSystem(shaderZipPath, Map.of())) {
-                Path root = fs.getPath("/");
-                try (var stream = Files.walk(root)) {
-                    stream.filter(Files::isRegularFile).forEach((file) -> {
-                        try {
-                            LOGGER.info("Reading: {}", file.toAbsolutePath());
-                            String fileContent = Files.readString(file.toAbsolutePath());
-                            IrisShaderState.addShaderLink(fileContent, file.toString());
-                            LOGGER.info("Adding shader link: {}: {}", file.toString(), fileContent.hashCode());
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
-                } catch (IOException e) {
-                    LOGGER.error("[Iris Frame Gen]: Failed to parse file contents: ", e);
-                }
-            }
-
-
             String initialFile = Files.readString(shaderPath.resolve(name), StandardCharsets.ISO_8859_1);
 
 
-            initialFile = "\n\nimage.irisFrameGen__motionVectorsBuffer = irisFrameGen__motionVectorsOutBuf RG32F RG32F RG32F true true 1 1 1 1\n\n" + initialFile;
+            initialFile = "\n\nimage.irisFrameGenOUTmotion = irisFrameGenOUTmotion RG32F RG32F RG32F true true 1 1 1 1\n\n" + initialFile;
 
 
-            //LOGGER.info("Modified file is: {}", initialFile);
+            LOGGER.info("Modified file is: {}", initialFile);
 
             Path absShaderPath = Minecraft.getInstance().gameDirectory.toPath().resolve(Path.of(shaderPath.toString()));
 

@@ -11,7 +11,8 @@
 		"GlslRenderMixin",
 		"RenderTypeMixin",
 		"iris.IrisShaderPackMixin",
-		"iris.IrisJcppProcessorMixin"
+		"iris.IrisIncludeGraphMixin",
+		"iris.IrisGlImageMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

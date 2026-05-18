@@ -222,10 +222,10 @@ public class IrisShaderPreprocessor {
 
         for (String line : headerLines) {
             if (!lines.contains(line.strip().toLowerCase())) {
-                LOGGER.info("Adding: {}", line);
+                // LOGGER.info("Adding: {}", line);
                 headerLinesAdd.add(line);
             } else {
-                LOGGER.info("Already exists: {}", line);
+                // LOGGER.info("Already exists: {}", line);
             }
         }
 
@@ -297,14 +297,14 @@ public class IrisShaderPreprocessor {
                     String coreAdded = addBody(headerAdded, VERTEX_SHADER_CORE_TERRAIN);
                     String processedSource = addExtensionHeaders(coreAdded);
 
-                    LOGGER.info("Preprocessed source: {}", processedSource);
+                    // LOGGER.info("Preprocessed source: {}", processedSource);
                     return processedSource;
                 } else if (absolutePath.endsWith(".fsh")) {
                     String headerAdded = addHeader(resolvedShaderSource, FRAGMENT_SHADER_HEADER_TERRAIN);
                     String coreAdded = addBody(headerAdded, FRAGMENT_SHADER_CORE_TERRAIN);
                     String processedSource = addExtensionHeaders(coreAdded);
 
-                    LOGGER.info("Preprocessed FRAGMENT source: {}", processedSource);
+                    // LOGGER.info("Preprocessed FRAGMENT source: {}", processedSource);
                     return processedSource;
                 }
             } else {
@@ -313,7 +313,7 @@ public class IrisShaderPreprocessor {
                     String coreAdded = addBody(headerAdded, VERTEX_SHADER_CORE_BASIC);
                     String processedSource = addExtensionHeaders(coreAdded);
 
-                    LOGGER.info("Preprocessed vertex basic source: {}", processedSource);
+                    // LOGGER.info("Preprocessed vertex basic source: {}", processedSource);
 
                     return processedSource;
                 } else if (absolutePath.endsWith(".fsh")) {
@@ -321,7 +321,7 @@ public class IrisShaderPreprocessor {
                     String coreAdded = addBody(headerAdded, FRAGMENT_SHADER_CORE_BASIC);
                     String processedSource = addExtensionHeaders(coreAdded);
 
-                    LOGGER.info("Preprocessed fragment basic source: {}", processedSource);
+                    // LOGGER.info("Preprocessed fragment basic source: {}", processedSource);
 
                     return processedSource;
                 }
