@@ -45,4 +45,8 @@ public class VkCtx {
     public PipelineCache getPipelineCache() {
         return pipelineCache;
     }
+
+    public Instance getInstance() {
+        return instance;
+    }
 }

@@ -1,5 +1,6 @@
 package com.carilt01.irisframegen.client.vk;
 
+import com.carilt01.irisframegen.client.FSR3Native;
 import com.carilt01.irisframegen.client.GlState;
 import com.carilt01.irisframegen.client.VulkanWindow;
 import com.mojang.blaze3d.textures.TextureFormat;
@@ -98,6 +99,9 @@ public class Render {
         this.createImageSamplers();
 
         LOGGER.info("Completed early graphics pipeline initialization. GL Render Complete Semph at: 0x{}", glRenderCompleteSemphAdd);
+
+        long context = FSR3Native.init(vkCtx.getDevice().getVkDevice().address(), graphQueue.getVkQueue().address(), vkCtx.getPhysDevice().getVkPhysicalDevice().address(),
+                vkCtx.getInstance().getVkInstance().address());
     }
 
     private void createImageSamplers() {
