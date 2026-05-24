@@ -100,8 +100,16 @@ public class Render {
 
         LOGGER.info("Completed early graphics pipeline initialization. GL Render Complete Semph at: 0x{}", glRenderCompleteSemphAdd);
 
+        LOGGER.info("VkDevice: 0x{}", vkCtx.getDevice().getVkDevice().address());
+        LOGGER.info("GraphQueue VkQueue: 0x{}", graphQueue.getVkQueue().address());
+        LOGGER.info("VkPhysicalDevice: 0x{}", vkCtx.getPhysDevice().getVkPhysicalDevice().address());
+        LOGGER.info("VkInstance: 0x{}", vkCtx.getInstance().getVkInstance().address());
+
+
         long context = FSR3Native.init(vkCtx.getDevice().getVkDevice().address(), graphQueue.getVkQueue().address(), vkCtx.getPhysDevice().getVkPhysicalDevice().address(),
                 vkCtx.getInstance().getVkInstance().address());
+
+        LOGGER.info("FSR3 Context is at: 0x{}", context);
     }
 
     private void createImageSamplers() {
